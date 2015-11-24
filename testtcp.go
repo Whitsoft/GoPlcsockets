@@ -11,14 +11,29 @@ import (
 	"os"
 	"plc_h"
 	"time"
+	"strconv"
 )
 
+const MINLEN = 12
+const MINCSD = 4
+const CSDLEN = 12 //IF Handle + T/O + Item cnt + Type ID (Address) + Len (Address)
+var TNSValue  int16
 func main() {
+	//var AddItemLen, DataItemLen, ETH_IPLen uint16
 	var PLCPtr plc_h.PLC_EtherIP_info
+	PLCPtr.PLCHostIP = "192.168.1.50"
+	PLCPtr.PLCHostPort = 44818
 	S := _Connect(&PLCPtr)
 	fmt.Println("Response ", S)
 	register_session(&PLCPtr)
-
+	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
+	
+	PLCPtr.PCIP.CIPHdr.CipTimeOut = plc_h.TIMEOUT
+	PLCPtr.PCIP.CIPHdr.CIPHandle = 0
+	PLCPtr.PCIP.CIPHdr.ItemCnt = 2
+	//PLCPtr.PLC_EtherHdr.CIPLen = 8 //minimum
+	Fill_CS_Address(&PLCPtr,plc_h.RRADDTYPE, plc_h.DIAG_STATUS_CMD) 
+	Fill_CS_Data(&PLCPtr,plc_h.DIAG_STATUS_CMD, plc_h.DIAG_STATUS_FNC)
 }
 func checkError(err error) {
 	if err != nil {
@@ -36,7 +51,8 @@ func _Connect(PLCPtr plc_h.PPLC_EtherIP_info) string { //Send a header - receive
 	var Cerr error
 
 	request := make([]byte, 24)
-	service = "192.168.1.50:44818"
+	service = PLCPtr.PLCHostIP + ":"+ strconv.Itoa(44818)
+
 	//  local = "192.168.1.10:49169"
 
 	aTCPAdd, Cerr = net.ResolveTCPAddr("tcp", service)
@@ -170,7 +186,7 @@ func register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCP
 	//	return result
 	//  }
 	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.Register_Session
-	PLCPtr.PLC_EtherHdr.CIP_Len = 4
+	PLCPtr.PLC_EtherHdr.CIP_Len = MINCSD
 	PLCPtr.PLC_EtherHdr.Session_handle = 0
 	PLCPtr.PLC_EtherHdr.EIP_status = 0
 	PLCPtr.PLC_EtherHdr.Context = 54346 //RandContext() //plcutils.RandContext
@@ -273,4 +289,74 @@ func IPInfoToByteArray(PLCPtr plc_h.PPLC_EtherIP_info, byteLen int) ([]byte, int
 	resBuf := make([]byte, byteLen, byteLen)
 	copy(resBuf[:], RBuf) //return a slice of size specified by byteLen parameter
 	return resBuf, len(resBuf)
+}
+
+//**********************************************************************
+// Command specific data - address portion                             *
+// Put 2 byte command + length of address portion + plc ip address     *
+// ip address as xxx.xxx.xxx.xxx or fewer bytes                        *
+// ip address may be padded with trailing zero for an even no of bytes *
+// PLCPtr - sent as an address - return data len, data len + min len   *
+//**********************************************************************
+func Fill_CS_Address(PLCPtr plc_h.PPLC_EtherIP_info, CSAddress_Type uint16,  Cmd byte)  {
+var IPlen uint16
+var IPAddByte []byte
+
+  if Cmd == plc_h.DIAG_STATUS_CMD{
+    IPAddByte = []byte(PLCPtr.PLCHostIP) //PLC IP Address
+	PLCPtr.PCIP.PAddress.ItemData = append(PLCPtr.PCIP.PAddress.ItemData,IPAddByte[:]...)
+	IPlen = uint16(len(IPAddByte))       //length of PLC IP Address in chars (bytes)
+	if IPlen % 2 == 0 {    //pad len to odd number
+       IPlen++
+	   S:=[]byte{0}
+	   PLCPtr.PCIP.PAddress.ItemData = append(PLCPtr.PCIP.PAddress.ItemData,S[0])     //pad with 0
+      } 
+	} else { //CM!= DIAG_STATUS_CMD //just set data = to 1
+	  IPlen = 1
+	  S:=[]byte{1}
+	  PLCPtr.PCIP.PAddress.ItemData = append(PLCPtr.PCIP.PAddress.ItemData, S[0])   // or insert 1	
+	  fmt.Println("XX ",IPlen,PLCPtr.PCIP.PAddress.ItemData)
+	}
+
+	PLCPtr.PLC_EtherHdr.CIP_Len = MINLEN + IPlen
+	PLCPtr.PCIP.PAddress.PAddressHdr.DataLen = IPlen  //Length of PLC IP Address
+    PLCPtr.PCIP.PAddress.PAddressHdr.CSItemType_ID = CSAddress_Type
+	fmt.Println(PLCPtr.PCIP.PAddress.ItemData)
+ 	
+    PLCPtr.PCIP.PAddress.PAddressHdr.DataLen = IPlen
+    return 
+}
+
+//**********************************************************************
+// Command specific data - data portion                                *
+// Put 2 byte command + length of data portion + data header           *
+//**********************************************************************
+func Fill_CS_Data(PLCPtr plc_h.PPLC_EtherIP_info,Cmd_Type, Fnc byte)  {
+const DMINLEN uint16 = 5  //size of CSItemType_ID + size of dataLen (Data_Item)
+  // Fill out header
+
+   switch Cmd_Type {
+      case plc_h.GEN_FILE_CMD:   PLCPtr.PCIP.PData.PDataHdr.CSItemType_ID = plc_h.RRDATATYPE //word  - don't count this
+      case plc_h.DIAG_STATUS_CMD:  {
+           PLCPtr.PCIP.PData.PDataHdr.CSItemType_ID = plc_h.RRDATATYPE
+           PLCPtr.PCIP.PData.PDataHdr.Cmd =  plc_h.FLSTATUS
+           }
+      }
+	
+  //len = size of sts+ size of cmd + size of TNS
+   PLCPtr.PCIP.PData.PDataHdr.DataLen = DMINLEN      //word  don't count total 1 word + 2 bytes = 4 bytes
+   PLCPtr.PCIP.PData.PDataHdr.Cmd =  Cmd_Type    //byte
+   PLCPtr.PCIP.PData.PDataHdr.Sts = 0          //byte
+   PLCPtr.PCIP.PData.PDataHdr.Tns = GetTNS()   //word
+   PLCPtr.PCIP.PData.PDataHdr.Fnc = Fnc
+   PLCPtr.PLC_EtherHdr.CIP_Len += 9
+   PLCPtr.PCIP.PData.PDataHdr.DataLen = DMINLEN
+	fmt.Println()
+	fmt.Printf(" Plcptr %x\n ",PLCPtr)
+      return 
+     }
+
+//func Fill_Logical_Buffer(PLCPtr plc_h.PPLC_EtherIP_info,)
+func GetTNS()  int16 {
+  return TNSValue + 1
 }

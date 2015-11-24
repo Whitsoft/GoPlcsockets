@@ -94,28 +94,36 @@ const (
 	Cancel              = 0x73
 	ETHIP_Header_Length = 24
 	DATA_MINLEN         = 16
+	TIMEOUT             = 0x400
 
 	//*****************************************
 	// PCCC commands
 	//*****************************************
-	CLOSE_CMD  = 0x0F
-	CLOSE_FNC  = 0x82
-	OPEN_CMD   = 0x0F
-	OPEN_FNC   = 0x81
-	STATUS_FNC = 0x03
-	PWRITE_CMD = 0x0F
-	PREAD_CMD  = 0x0F
-	PWRITE_ANS = 0x4F
-	PREAD_ANS  = 0x4F
-	UWRITE_CMD = 0x08
-	UREAD_CMD  = 0x01
-	UWRITE_ANS = 0x48
-	UREAD_ANS  = 0x41
+	GEN_FILE_CMD          = 0x0F
+	OPEN_FILE_CMD         = 0x0F
+	CLOSE_FILE_CMD        = 0x0F
+	PROT_FILE_READ_CMD    = 0x0F
+	PROT_FILE_WRITE_CMD   = 0x0F
+	LOGICAL_READ_CMD      = 0x0F
+	LOGICAL_WRITE_CMD     = 0x0F
+	DIAG_STATUS_CMD       = 0x06
+	UNPROT_READ_CMD       = 0x01
+	UNPROT_WRITE_CMD      = 0x08
+	
+	PLC_ANSWER            = 0x4F
+	PLC_UNPROT_RD_ANSWER  = 0x41
+	PLC_UNPROT_WRT_ANSWER = 0x48
+	
+	OPEN_FILE_FNC         = 0x81
+	CLOSE_FNC_FNC         = 0x82
+    PROT_FILE_READ_FNC    = 0xA7
+	PROT_FILE_WRITE_FNC   = 0xAF
+	LOGICAL_READ_FNC      = 0xA2
+	LOGICAL_WRITE_FNC     = 0xAA
+	DIAG_STATUS_FNC       = 0x03
+	//UNPROT_READ_FNC       = none required
+	//UNPROT_WRITE_FNC      = none required
 
-	PWRITE_FNC      = 0xAA
-	PREAD_FNC       = 0xA2
-	PREAD_FILE_FNC  = 0xA7
-	PWRITE_FILE_FNC = 0xAF
 )
 
 //***************************************************
@@ -171,7 +179,7 @@ type Address_Hdr struct {
 //***********************************************************
 type Address_Item struct {
 	PAddressHdr Address_Hdr
-	ItemData    [CIPADDLEN]byte
+	ItemData    []byte
 }
 
 type Data_Hdr struct {
@@ -180,6 +188,7 @@ type Data_Hdr struct {
 	Cmd           byte
 	Sts           byte
 	Tns           int16
+	Fnc           byte
 }
 
 //***********************************************************
@@ -232,7 +241,7 @@ type Ethernet_header struct { //284 bytes
 type PEtherIP_Hdr *EtherIP_Hdr
 type EtherIP_Hdr struct { //24 bytes
 	EIP_Command    uint16 // Such as as 0x006F SendRRData
-	CIP_Len        uint16
+	CIP_Len        uint16 // Length of command specific data
 	Session_handle uint32
 	EIP_status     uint32 //0x00000000 = success
 	Context        uint64 //Sender context
