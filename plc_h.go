@@ -22,13 +22,25 @@ const (
 	READ_ONLY     = 1
 	READ_WRITE    = 3
 	PROTOVERSION  = 1
+	ENCAPSHDRLEN  = 24
+	CSDLEN        = 17
+	
+	MINLOGICAL    = 10  //bytes ahead of data
+	MINTYPED      = 11
+	MINCIFREAD    = 7
+	MINCIFWRITE   = 6
+	CMDSTSTNS     = 4
+	WORDLEN       = 2
+	INTLEN        = 4
+	FLOATLEN      = 4
 
 	CELL_DFLT_TIMEOUT = 5000
 	STATTYPE          = 0x85
 	RRADDTYPE         = 0x81
 	RRDATATYPE        = 0x91 //Who knows - undocumented
 	PLCCOUNT          = 1
-
+	SUBPRE            = 1
+    SUBACC            = 2
 	ADDRTYPESCOUNT     = 26
 	DATA_Buffer_Length = 2024
 	CPH_Null           = 0
@@ -48,22 +60,22 @@ const (
 	//**********************************************
 	// FILE TYPES
 	//**********************************************
-	FNC_STATUS  = 0x84
-	FNC_BIT     = 0x85
-	FNC_TIMER   = 0x86
-	FNC_COUNTER = 0x87
-	FNC_CONTROL = 0x88
-	FNC_INTEGER = 0x89
-	FNC_FLOAT   = 0x8A
-	FNC_OUTPUT  = 0x8B
-	FNC_INPUT   = 0x8C
-	FNC_STRING  = 0x8D
-	FNC_ASCII   = 0x8E
-	FNC_BCD     = 0x8F
+	STATUS_TYPE  = 0x84
+	BIT_TYPE     = 0x85
+	TIMER_TYPE   = 0x86
+	COUNTER_TYPE = 0x87
+	CONTROL_TYPE = 0x88
+	INTEGER_TYPE = 0x89
+	FLOAT_TYPE   = 0x8A
+	OUTPUT_TYPE  = 0x8B
+	INPUT_TYPE   = 0x8C
+	STRING_TYPE  = 0x8D
+	ASCII_TYPE   = 0x8E
+	BCD_TYPE     = 0x8F
 
 	ETHERNET       = 1
-	CIPADDLEN      = 15
-	CIPDATALEN     = 94
+	CIAddLEN      = 15
+	CIDataLEN     = 94
 	REGLEN         = 28
 	OK             = 0
 	NOTOK          = -1
@@ -79,6 +91,7 @@ const (
 	WRITEERROR     = -11
 	TCPERROR       = -12
 	READERROR      = -13
+
 
 	//constants for Ethernet/IP (encapsulation) header
 	NOP                 = 0
@@ -96,34 +109,69 @@ const (
 	DATA_MINLEN         = 16
 	TIMEOUT             = 0x400
 
+    //*****************************************
+	// PCCC file numbers
+	//*****************************************
+	BIT_NO              = 0x0003
+	TIMER_NO            = 0x0004
+	COUNTER_NO          = 0x0005
+	CONTROL_NO          = 0x0006
+	INTEGER_NO          = 0x0007
+	FLOAT_NO            = 0x0008
+	CIF_NO              = 0x0009
 	//*****************************************
 	// PCCC commands
 	//*****************************************
 	GEN_FILE_CMD          = 0x0F
 	OPEN_FILE_CMD         = 0x0F
 	CLOSE_FILE_CMD        = 0x0F
-	PROT_FILE_READ_CMD    = 0x0F
-	PROT_FILE_WRITE_CMD   = 0x0F
+	TYPE_FILE_READ_CMD    = 0x0F
+	TYPE_FILE_WRITE_CMD   = 0x0F
 	LOGICAL_READ_CMD      = 0x0F
 	LOGICAL_WRITE_CMD     = 0x0F
 	DIAG_STATUS_CMD       = 0x06
-	UNPROT_READ_CMD       = 0x01
-	UNPROT_WRITE_CMD      = 0x08
+	CIF_READ_CMD          = 0x01
+	CIF_WRITE_CMD         = 0x08
 	
 	PLC_ANSWER            = 0x4F
-	PLC_UNPROT_RD_ANSWER  = 0x41
-	PLC_UNPROT_WRT_ANSWER = 0x48
+	PLC_CIF_RD_ANSWER     = 0x41
+	PLC_CIF_WRT_ANSWER    = 0x48
 	
 	OPEN_FILE_FNC         = 0x81
-	CLOSE_FNC_FNC         = 0x82
-    PROT_FILE_READ_FNC    = 0xA7
-	PROT_FILE_WRITE_FNC   = 0xAF
+	CLOSE_FILE_FNC        = 0x82
+    TYPE_FILE_READ_FNC    = 0xA7
+	TYPE_FILE_WRITE_FNC   = 0xAF
 	LOGICAL_READ_FNC      = 0xA2
 	LOGICAL_WRITE_FNC     = 0xAA
 	DIAG_STATUS_FNC       = 0x03
 	//UNPROT_READ_FNC       = none required
 	//UNPROT_WRITE_FNC      = none required
-
+	INPUT            = "I"   // Input
+	OUTPUT           = "O"   // Input
+	STATUS           = "S"	 // Status
+    BINARY           = "B"	 // Binary
+    TIMER            = "T"   // Timer
+	COUNTER          = "C"   // Counter
+	CONTROL          = "R"	 // Control
+	INTEGER          = "N"	 // Integer
+    FLOAT            = "F"	 // Float
+	ASCII            = "A"	 // ASCII
+	BCD              = "D"	 // BCD
+	BLOCKTRANS       = "BT"  // Block Transfer
+    LONGINT          = "L"	 // Long Integer
+	MESSAGE          = "MG"	 // Message
+	PID              = "PD"  // PID
+    //			     = "SC"  // ??
+	STRING           = "ST"	 // String
+	PLCNAME          = "PN"	 // PLC Name
+	RUNG             = "RG"  // Rung
+	FORCEINTABLE     = "FI"  // Input Force Table
+	FORCEOUTTABLE    = "FO"  // Output Force Table
+    SECTION3         = "XA"  // Section 3 File
+	SECTION4         = "XB"  // Section 4 File
+	SECTION5         = "XC"  // Section 5 File
+	SECTION6         = "XD"  // Section 6 File
+	SECTIONFF        = "FF"  // Force File Section
 )
 
 //***************************************************
@@ -161,7 +209,7 @@ type Float_Buffer [33]byte
 //******************************************
 // A large buffer of bytes                 *
 //******************************************
-type Pdata_buffer *Data_buffer
+type PData_buffer *Data_buffer
 type Data_buffer struct {
 	Data        []byte
 	Length      uint16
@@ -178,17 +226,17 @@ type Address_Hdr struct {
 // Acronym ACPF - 1. Item count then 2. Address Item        *
 //***********************************************************
 type Address_Item struct {
-	PAddressHdr Address_Hdr
+	AddressHdr Address_Hdr
 	ItemData    []byte
 }
 
 type Data_Hdr struct {
 	CSItemType_ID uint16 //usually $91
 	DataLen       uint16
-	Cmd           byte
-	Sts           byte
-	Tns           int16
-	Fnc           byte
+//	Cmd           byte
+//	Sts           byte
+//	Tns           int16
+//	Fnc           byte
 }
 
 //***********************************************************
@@ -197,8 +245,8 @@ type Data_Hdr struct {
 //***********************************************************
 type PData_Item *Data_Item
 type Data_Item struct {
-	PDataHdr Data_Hdr //8 bytes
-	ItemData []byte   //[CIPDATALEN]byte
+	DataHdr Data_Hdr //4 bytes
+	ItemData []byte   //[CIDataLEN]byte
 	//  fnc byte
 	// FileNo byte
 	// FileType byte
@@ -220,8 +268,8 @@ type CIP_Hdr struct {
 
 type CIP struct {
 	CIPHdr   CIP_Hdr
-	PAddress Address_Item
-	PData    Data_Item
+	Address Address_Item
+	Data    Data_Item
 }
 
 type Ethernet_header struct { //284 bytes
@@ -272,11 +320,13 @@ type PLC_EtherIP_info struct {
 //************************************
 type PPCCCReply *PCCCReply
 type PCCCReply struct {
-	Length   uint16
-	Error    int
-	CIPError int
-	Status   byte
-	Answer   []byte //was 31 DDW
+	Cmd            uint16
+	Length         uint16
+	Session_handle uint32
+	Context        uint64 //Sender context
+	Status         uint32
+	Error          uint16
+	Answer         []byte 
 }
 
 //************************************
@@ -285,7 +335,8 @@ type PCCCReply struct {
 //************************************
 type PPCCCReplyUn *PCCCReplyUn
 type PCCCReplyUn struct {
-	Answer [128]byte //was 31 DDW
+	Size   byte
+	Answer []byte //was 31 DDW
 }
 
 type Custom_connect struct {
@@ -294,18 +345,38 @@ type Custom_connect struct {
 	Junk    [12]byte
 }
 
+
+//************************************************************
+// Data structure to carry all relevant information for      *
+// Logical read/write, CIF read/write, Typed file read/write *
+// Use this data to populate
+//************************************************************
 type PFileData *FileData
 type FileData struct {
-	Section    int
-	Ffile      byte
-	Element    byte
-	Subelement byte
-	Ftype      byte
-	Typelen    int
+	Section    int          // For extended PLC file memory
+	Length     byte         // Length of buffer
+	PutCmd     byte         // Command to PLC
+	GetCmd     byte         // Command from PLC
+	TNS        uint16
+	TNSGet     uint16
+	Status     byte         // Read
+	EXStatus   byte         // Read only when Status 0xF0
+	Function   byte         // Write
+	Offset     uint16       // Typed file Read/Write
+	FileNo     byte         // Logical Read/Write
+	FileType   byte         // Typed file Read/Write
+	Element    byte         // Logical Read/Write
+	SubElement byte         // Logical Read/Write
 	Bit        byte
-	Length     byte
-	Floatdata  byte
-	Data       [24]byte
+	Addr       uint16       // CIF Read/Write
+	Tag        uint16       // Typed file Read/Write
+	FloatData  []float32    // Unconverted float32 data
+	ByteData   []byte
+	WordData   []uint16     // Unconverted word data
+	TypeLen    int          // Length of elements contained in Data
+	Size       byte         // Read/Write - size in bytes of data
+	String     string
+	Data       []byte       // Raw data element values in byte form - just float, word or byte for now
 }
 
 func main() {
