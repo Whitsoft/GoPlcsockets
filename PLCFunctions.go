@@ -680,95 +680,6 @@ func ByteArrayToIPInfo(PLCPtr plc_h.PPLC_EtherIP_info, ByteBuf []byte) bool {
 	return true
 }
 
-//***********************************************
-// Convert a string into a FileData structure   *
-//***********************************************
-func fileStrToFileData(FileAddr string, FileData plc_h.PFileData) {
-	var x int
-	var prefix, suffix string
-	//var  tempFileData [3]string
-
-	FileData.Section = -1
-	FileData.FileNo = 0
-	FileData.Element = 0
-	FileData.SubElement = 0
-	//FileData.Floatdata = plc_h.FALSE
-	// tempFileData        = ""
-
-	//------------------------- SLC 5/05 Encoding ----------------------
-	FileData.FileNo = 0
-	FileData.Element = 0
-	FileData.SubElement = 0
-	FileData.Section = 0
-	suffix = ""
-	prefix = string(FileAddr[0])
-
-	for x = 1; x <= len(FileAddr); x++ {
-		if PLCUtils.IsDigit(FileAddr[x]) {
-			suffix = suffix + string(FileAddr[x])
-		} else {
-			break
-		}
-	}
-
-	I, ERR := strconv.Atoi(suffix)
-	fmt.Println(ERR, suffix)
-
-	FileData.FileNo = byte(I)
-
-	if prefix == "O" {
-		FileData.FileType = plc_h.OUTPUT_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "I" {
-		FileData.FileType = plc_h.INPUT_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "S" {
-		FileData.FileType = plc_h.STATUS_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "B" {
-		//inc(x);
-		FileData.FileType = plc_h.BIT_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "T" {
-		FileData.FileType = plc_h.TIMER_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "C" {
-		FileData.FileType = plc_h.COUNTER_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "R" {
-		FileData.FileType = plc_h.CONTROL_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "N" {
-		FileData.FileType = plc_h.INTEGER_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "F" {
-		FileData.FileType = plc_h.FLOAT_TYPE
-		//FileData.Floatdata = plc_h.TRUE
-		FileData.TypeLen = 4
-	} else if prefix == "A" {
-		//  inc(x);
-		FileData.FileType = plc_h.ASCII_TYPE
-		FileData.TypeLen = 1
-	} else if prefix == "D" {
-		FileData.FileType = plc_h.BCD_TYPE
-		FileData.TypeLen = 2
-	} else if prefix == "P" { //special case to read program FileData from PLC.
-		FileData.Section = 1
-		FileData.FileNo = 7
-		FileData.Element = 0
-	}
-
-	//fmt.Println("Section ", FileData.Section)
-	//fmt.Println("Element ", FileData.Element)
-	//fmt.Println("Sub Element ", FileData.SubElement)
-	//fmt.Printf("FType %x", FileData.FileType)
-	//fmt.Println(" ")
-	//fmt.Println("Type Len ", FileData.TypeLen)
-	//fmt.Println("Bit ", FileData.Bit)
-	//fmt.Println("Length ", FileData.Length)
-
-	return
-}
 
 //*******************************************************************************************
 //  Data returned by PLC from a Protected typed FILE read/write                             *
@@ -1024,6 +935,9 @@ func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element st
 	PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(len(FData.Data))
 	_,_,_ = PutData(PLCPtr,FData, RW)
 }
+func Test(s string) {
+	fmt.Println(s)
+}
 
 //******************************************************************
 //  Unprotected read/write  CIF file - Common Interface File       *
@@ -1033,6 +947,7 @@ func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element st
 func CIFPut(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, Elements byte, Addr uint16, RW string) {
 	var NumElements int
 	var Size byte
+fmt.Printf("Stuff % v ",RW)
 	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
 
 	Size = Elements * plc_h.WORDLEN
@@ -1040,6 +955,7 @@ func CIFPut(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, Elements byte
 	   FData.Size   = Elements * plc_h.WORDLEN
 	   FData.PutCmd = plc_h.CIF_READ_CMD
 	   FData.Length = plc_h.MINCIFREAD + Size
+	fmt.Printf("Stuff % x ",FData.Size)
 	} else {
 		NumElements = len(FData.WordData)
 		FData.Size  = byte(NumElements * plc_h.WORDLEN)

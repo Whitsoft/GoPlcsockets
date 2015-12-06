@@ -43,21 +43,32 @@ func main() {
 	PLCPtr.PCIP.CIPHdr.CIPHandle = 0
 	PLCPtr.PCIP.CIPHdr.ItemCnt = 2
 
-    FData.Tag = PLCFunctions.OpenFile(&PLCPtr, plc_h.FLOAT_NO, plc_h.FLOAT_TYPE)
+    //FData.Tag = PLCFunctions.OpenFile(&PLCPtr, plc_h.FLOAT_NO, plc_h.FLOAT_TYPE)
 	FData.FileType = plc_h.FLOAT_TYPE
 	FData.Offset = 0
 	FData.FloatData = Floats
-	PLCFunctions.TypedFilePut (&PLCPtr,&FData ,"WRITE" )
-	 junk := PLCFunctions.CloseFile(&PLCPtr, FData.Tag)
-	fmt.Printf("JUNK % x ",junk)
-	os.Exit(0)
-	PLCFunctions.FileStrToFileData("T4:1.3", &FData)
+	//PLCFunctions.TypedFilePut (&PLCPtr,&FData ,"WRITE" )
+	//_ = PLCFunctions.CloseFile(&PLCPtr, FData.Tag)
+	//FData.WordData = a
+   // PLCFunctions.CIFPut(&PLCPtr, &FData , 2, 0, "WRITE") 
+	//PLCFunctions.CIFPut(&PLCPtr, &FData , 2, 0, "READ") 
+	fmt.Printf("PCIF % v ",FData.WordData)
+
+	//PLCFunctions.FileStrToFileData("T4:1.3", &FData)
+	FData.FloatData = Floats
 	FData.WordData = a
-	//PLCFunctions.LogicalPut(&PLCPtr,&FData,"T4:1.3",2, "WRITE")
+
+
+
+	FData.WordData = a
+	PLCFunctions.LogicalPut(&PLCPtr,&FData,"T4:1/ACC",1, "READ")
+		fmt.Printf("Results ",FData.WordData)
+		PLCFunctions.UnRegister_session(&PLCPtr)
+			os.Exit(0)
 	FData.FileType = plc_h.INTEGER_TYPE
 	FData.FloatData = Floats
 	//PLCFunctions.LogicalPut(&PLCPtr,&FData, 2,4, 0x86, 1, 1, a, b,  c, "READ")
-	fmt.Printf("Results ",FData.WordData)
+
 	//PLCPtr.PLC_EtherHdr.CIPLen = 8 //minimum
 	//_, answer = PLCFunctions.Get_Status(&PLCPtr)
 //	fmt.Println(" ", answer)
