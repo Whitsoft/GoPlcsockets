@@ -20,18 +20,10 @@ const CSDLEN = 12 //IF Handle + T/O + Item cnt + Type ID (Address) + Len (Addres
 var TNSValue uint16
 
 func main() {
-	//var AddItemLen, DataItemLen, ETH_IPLen uint16
-	//var a []uint16
 
-	//var answer string
 	var PLCPtr plc_h.PLC_EtherIP_info
 	var FData plc_h.FileData
-    Floats := []float32{1245.5,6666.66}
-	//0f:00:02:00:a2:04:04:86:01:02
-    a := []uint16{0xff00,0x1234}
-    //IG:= []byte{0x0f,0x00,0x02,0xa2,0x04,0x04,0x86,0x01,0x02}
-	//PLCFunctions.FileStrToFileData("T4:1.3", &FData)
-	//fmt.Println(FData)
+
 	PLCPtr.PLCHostIP = "192.168.1.50"
 	PLCPtr.PLCHostPort = 44818
 	_ = PLCFunctions.Connect(&PLCPtr)
@@ -42,36 +34,39 @@ func main() {
 	PLCPtr.PCIP.CIPHdr.CipTimeOut = plc_h.TIMEOUT
 	PLCPtr.PCIP.CIPHdr.CIPHandle = 0
 	PLCPtr.PCIP.CIPHdr.ItemCnt = 2
-
-    //FData.Tag = PLCFunctions.OpenFile(&PLCPtr, plc_h.FLOAT_NO, plc_h.FLOAT_TYPE)
+	
+    //**********************************************
+    // Test Typed File read/write                  *
+	// Open file to get a tag - used in read/write *
+	// read/write - then close file                *
+	//**********************************************	
+	Floats := []float32{1245.5,6666.66}
+	FData.FloatData = Floats
+    FData.Tag = PLCFunctions.OpenFile(&PLCPtr, plc_h.FLOAT_NO, plc_h.FLOAT_TYPE)
 	FData.FileType = plc_h.FLOAT_TYPE
 	FData.Offset = 0
 	FData.FloatData = Floats
-	//PLCFunctions.TypedFilePut (&PLCPtr,&FData ,"WRITE" )
-	//_ = PLCFunctions.CloseFile(&PLCPtr, FData.Tag)
-	//FData.WordData = a
-   // PLCFunctions.CIFPut(&PLCPtr, &FData , 2, 0, "WRITE") 
-	//PLCFunctions.CIFPut(&PLCPtr, &FData , 2, 0, "READ") 
-	fmt.Printf("PCIF % v ",FData.WordData)
-
-	//PLCFunctions.FileStrToFileData("T4:1.3", &FData)
-	FData.FloatData = Floats
-	FData.WordData = a
-
-
-
-	FData.WordData = a
-	PLCFunctions.LogicalPut(&PLCPtr,&FData,"T4:1/ACC",1, "READ")
-		fmt.Printf("Results ",FData.WordData)
-		PLCFunctions.UnRegister_session(&PLCPtr)
-			os.Exit(0)
-	FData.FileType = plc_h.INTEGER_TYPE
-	FData.FloatData = Floats
-	//PLCFunctions.LogicalPut(&PLCPtr,&FData, 2,4, 0x86, 1, 1, a, b,  c, "READ")
-
-	//PLCPtr.PLC_EtherHdr.CIPLen = 8 //minimum
-	//_, answer = PLCFunctions.Get_Status(&PLCPtr)
-//	fmt.Println(" ", answer)
+	PLCFunctions.TypedFilePut (&PLCPtr,&FData, 2 ,"WRITE" )
+	PLCFunctions.TypedFilePut (&PLCPtr,&FData, 2 ,"READ" )
+	_ = PLCFunctions.CloseFile(&PLCPtr, FData.Tag)
+	fmt.Printf("Typed File Read % v",FData.FloatData)
+	fmt.Println()
+	
+	
+	Ints := []uint16{0xff00,0x1234}
+	FData.WordData = Ints
+    PLCFunctions.CIFPut(&PLCPtr, &FData , 2, 0, "WRITE")   //Write 2 words (0xff00,0x1234) to N9:0
+	PLCFunctions.CIFPut(&PLCPtr, &FData , 2, 0, "READ")    //Read the results
+    fmt.Printf("CIF File Read % v",FData.WordData)
+    fmt.Println()
+    
+	//*********************************************
+    // Test Logical read/write                        *
+	//*********************************************	
+	PLCFunctions.LogicalPut(&PLCPtr,&FData,"B3:0/2",3, "READ") //T4:1/ACC
+	fmt.Printf("Logical Read % v",FData.WordData)
+	fmt.Println()
+	PLCFunctions.UnRegister_session(&PLCPtr)
 }
 
 func checkError(err error) {

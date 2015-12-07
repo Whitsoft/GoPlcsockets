@@ -94,13 +94,15 @@ func Connect(PLCPtr plc_h.PPLC_EtherIP_info) string { //S} a header - receive a 
 //**************************************************************
 // Input a string, fill in a FileData structure by side effect *
 // T4:1/ACC example                                            *
+// Fill in Section, FileNo, FileType, Element and SubElement   *
 //**************************************************************
 func StrToFileData(FileAddr string, FileData plc_h.PFileData) {
 	var I, Slash, Dot int
 	//var Bit string
 	var _FType, _File, _Elem, Sub, TmpF string
 	var FileNum byte
-
+	
+	FileData.Data =  make([]byte,0)
 	FileData.Section = -1
 	FileData.FileNo = 0
 	FileData.Element = 0
@@ -117,7 +119,6 @@ func StrToFileData(FileAddr string, FileData plc_h.PFileData) {
 	TmpF = strings.ToUpper(FileAddr)
 	I = PLCUtils.FirstDigit(TmpF)
 	_FType = TmpF[0:I] //Everything before first digit
-
 	if I == 0 {
 		return
 	}
@@ -131,11 +132,13 @@ func StrToFileData(FileAddr string, FileData plc_h.PFileData) {
 	FileNum = byte(JI)
 	TmpF = TmpF[I+1:] //Everything after delimiter
 	I = PLCUtils.FirstDigit(TmpF)
-	if I <= 0 {
+	if I < 0 {
 		TmpF = ""
 	}
+
 	Slash = strings.Index(TmpF, "/")
 	Dot = strings.Index(TmpF, ".")
+								
 	if (Dot > 0) && (Slash > Dot) {
 		SL := TmpF[0:Dot]
 		SM := TmpF[Dot+1 : Slash]
@@ -150,12 +153,13 @@ func StrToFileData(FileAddr string, FileData plc_h.PFileData) {
 	}
 	Slash = strings.Index(TmpF, "/")
 	Dot = strings.Index(TmpF, ".")
-	if Dot > 0 {
+	if Dot >= 0 {
 		//Bit:=TmpF[Dot:]
 		Sub = TmpF[Slash+1 : Dot-Slash]
 	} else if Slash > 0 {
-		Sub = TmpF[Slash:]
+		Sub = TmpF[Slash+1:]
 	}
+
 	if _Elem != "" {
 		JI, _ = strconv.Atoi(_Elem)
 		FileData.Element = byte(JI)
@@ -171,7 +175,6 @@ func StrToFileData(FileAddr string, FileData plc_h.PFileData) {
 	} else {
 		FileData.SubElement = 0
 	}
-
 	FileData.TypeLen = 2 //default
 	FileData.FileNo = FileNum
 
@@ -214,32 +217,7 @@ func StrToFileData(FileAddr string, FileData plc_h.PFileData) {
 		FileData.FileNo = 7
 		FileData.Element = 0
 	}
-
-	FileData.Length = 1
-	if FileData.FileNo != 0 {
-		FileData.Data[0] = FileData.Data[0] | 2
-		FileData.Data[FileData.Length] = FileData.FileNo
-		FileData.Length++
-	}
-
-	if FileData.Section != 0 {
-		FileData.Data[FileData.Length] = byte(FileData.Section)
-		FileData.Length++
-		FileData.Data[0] = FileData.Data[0] | 1
-	}
-
-	if FileData.Element != 0 {
-		FileData.Data[0] = FileData.Data[0] | 4
-		FileData.Data[FileData.Length] = FileData.Element
-		FileData.Length++
-	}
-
-	if FileData.SubElement != 0 {
-		FileData.Data[0] = FileData.Data[0] | 8
-		FileData.Data[FileData.Length] = FileData.SubElement
-		FileData.Length++
-	}
-	return
+return
 }
 
 
@@ -541,8 +519,7 @@ func Register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCP
 	//kerr := aConn.SetKeepAlive(true)
 	time.Sleep(100 * time.Millisecond)
 	read_len, Rerr := aConn.Read(request)
-	//	fmt.Printf("Req %x ", request)
-	//res, ber := bufio.NewReader(aConn).Read(request)
+
 	if (Rerr != nil) || (read_len != 28) {
 		PLCPtr.Error = plc_h.READERROR
 		return "Read Error: " + PLCPtr.PLCHostIP
@@ -551,6 +528,45 @@ func Register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCP
 	PLCPtr.PLC_EtherHdr.Session_handle = PLCUtils.ByteSliceToUint32(session)
 	return "OK"
 }
+
+func UnRegister_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCPConn error
+ var dataBuff plc_h.Data_buffer //success = 0, recvBuff
+	var aConn *net.TCPConn
+	var result string
+	request := make([]byte, 28)
+	//var res int
+	result = "NOTOK"
+	aConn = PLCPtr.Connection
+
+	//  if aConn = nil {
+	//	return result
+	//  }
+	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.UnRegister_Session
+	PLCPtr.PLC_EtherHdr.CIP_Len = 4
+	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.Context = PLCUtils.RandContext() //RandContext() //plcutils.RandContext
+	PLCPtr.PLC_EtherHdr.Options = 0
+	//fill_header(comm, head, debug);
+	dataBuff.Data, _ = IPInfoToByteArray(PLCPtr, plc_h.REGLEN) //plcutils.IPInfoToByteArray(PLCPtr)
+	dataBuff.Data[24] = plc_h.PROTOVERSION
+	dataBuff.Data[plc_h.ETHIP_Header_Length] = 1 //* Protocol Version Number */
+	dataBuff.Overall_len = plc_h.ETHIP_Header_Length + 4
+	_, err := aConn.Write([]byte(dataBuff.Data))
+	if err != nil {
+		return result
+	} else {
+		result = "OK"
+	}
+	//kerr := aConn.SetKeepAlive(true)
+	time.Sleep(100 * time.Millisecond)
+	read_len, Rerr := aConn.Read(request)
+
+	if (Rerr != nil) || (read_len != 28) {
+		PLCPtr.Error = plc_h.READERROR
+		return "Read Error: " + PLCPtr.PLCHostIP
+	}
+	return "OK"
+	}
 
 //**********************************************************************
 // Command specific data - address portion                             *
@@ -600,6 +616,10 @@ func Fill_CS_DataHdr(PLCPtr plc_h.PPLC_EtherIP_info,  Cmd_type, Fnc byte) {
 
 	switch Cmd_type {
 	case plc_h.GEN_FILE_CMD:
+		PLCPtr.PCIP.Data.DataHdr.CSItemType_ID = plc_h.RRDATATYPE //word  - don't count this
+	case plc_h.CIF_READ_CMD:
+		PLCPtr.PCIP.Data.DataHdr.CSItemType_ID = plc_h.RRDATATYPE //word  - don't count this
+	case plc_h.CIF_WRITE_CMD:
 		PLCPtr.PCIP.Data.DataHdr.CSItemType_ID = plc_h.RRDATATYPE //word  - don't count this
 	case plc_h.DIAG_STATUS_CMD:
 		{
@@ -680,6 +700,95 @@ func ByteArrayToIPInfo(PLCPtr plc_h.PPLC_EtherIP_info, ByteBuf []byte) bool {
 	return true
 }
 
+//***********************************************
+// Convert a string into a FileData structure   *
+//***********************************************
+func fileStrToFileData(FileAddr string, FileData plc_h.PFileData) {
+	var x int
+	var prefix, suffix string
+	//var  tempFileData [3]string
+
+	FileData.Section = -1
+	FileData.FileNo = 0
+	FileData.Element = 0
+	FileData.SubElement = 0
+	//FileData.Floatdata = plc_h.FALSE
+	// tempFileData        = ""
+
+	//------------------------- SLC 5/05 Encoding ----------------------
+	FileData.FileNo = 0
+	FileData.Element = 0
+	FileData.SubElement = 0
+	FileData.Section = 0
+	suffix = ""
+	prefix = string(FileAddr[0])
+
+	for x = 1; x <= len(FileAddr); x++ {
+		if PLCUtils.IsDigit(FileAddr[x]) {
+			suffix = suffix + string(FileAddr[x])
+		} else {
+			break
+		}
+	}
+
+	I, ERR := strconv.Atoi(suffix)
+	fmt.Println(ERR, suffix)
+
+	FileData.FileNo = byte(I)
+
+	if prefix == "O" {
+		FileData.FileType = plc_h.OUTPUT_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "I" {
+		FileData.FileType = plc_h.INPUT_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "S" {
+		FileData.FileType = plc_h.STATUS_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "B" {
+		//inc(x);
+		FileData.FileType = plc_h.BIT_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "T" {
+		FileData.FileType = plc_h.TIMER_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "C" {
+		FileData.FileType = plc_h.COUNTER_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "R" {
+		FileData.FileType = plc_h.CONTROL_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "N" {
+		FileData.FileType = plc_h.INTEGER_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "F" {
+		FileData.FileType = plc_h.FLOAT_TYPE
+		//FileData.Floatdata = plc_h.TRUE
+		FileData.TypeLen = 4
+	} else if prefix == "A" {
+		//  inc(x);
+		FileData.FileType = plc_h.ASCII_TYPE
+		FileData.TypeLen = 1
+	} else if prefix == "D" {
+		FileData.FileType = plc_h.BCD_TYPE
+		FileData.TypeLen = 2
+	} else if prefix == "P" { //special case to read program FileData from PLC.
+		FileData.Section = 1
+		FileData.FileNo = 7
+		FileData.Element = 0
+	}
+
+	//fmt.Println("Section ", FileData.Section)
+	//fmt.Println("Element ", FileData.Element)
+	//fmt.Println("Sub Element ", FileData.SubElement)
+	//fmt.Printf("FType %x", FileData.FileType)
+	//fmt.Println(" ")
+	//fmt.Println("Type Len ", FileData.TypeLen)
+	//fmt.Println("Bit ", FileData.Bit)
+	//fmt.Println("Length ", FileData.Length)
+
+	return
+}
 
 //*******************************************************************************************
 //  Data returned by PLC from a Protected typed FILE read/write                             *
@@ -769,10 +878,7 @@ func TypedFile(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData) (string, s
 		return "Read Error: " + PLCPtr.PLCHostIP, "", Rerr
 	}
 	_ = ByteArrayToReply(&PLCReply, request) 
-					fmt.Printf("Data % x ",request)
 	FData.Data = PLCReply.Answer[4:]
-	//LogicalGet(FData)	
-	//s = ParseStatus(&PLCReply)
  
 	return "OK", s, nil
 }
@@ -783,30 +889,37 @@ func TypedFile(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData) (string, s
 //  Element data to write will be in a FileData structure, FloatData, WordData or ByteData                               *
 //  RW = "READ" denotes a read operation, else Write                                                                     *
 //************************************************************************************************************************
-func TypedFilePut (PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, RW string) {
-  var Elements int
+func TypedFilePut (PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData,Elements int, RW string) {
+  const MINBYTES = 11
+  var NumElements int
   var TmpData []byte
 
 	if RW == "READ" {
 	   FData.ByteData   = make([]byte,0)
 	   FData.WordData   = make([]uint16, 0)
 	   FData.FloatData  = make([]float32, 0)	
-	   FData.Size = 0	
 	   FData.PutCmd = plc_h.TYPE_FILE_READ_CMD 
 	   FData.Function = plc_h.TYPE_FILE_READ_FNC
+	   if FData.FileType == plc_h.FLOAT_TYPE {
+		   FData.Size = byte(Elements * plc_h.FLOATLEN)
+	   } else if (FData.FileType != plc_h.STATUS_TYPE) && (FData.FileType != plc_h.STRING_TYPE)	{
+		   FData.Size = byte(Elements * plc_h.WORDLEN)
+	   } else {
+	     FData.Size = byte(NumElements)
+	   } 
 	} else {    // Set size of data in bytes
 	    if (FData.FileType == plc_h.FLOAT_TYPE)	{
 			FData.ByteData   = make([]byte,0)
 	        FData.WordData   = make([]uint16, 0)
-			Elements = len(FData.FloatData) 
-			FData.Size = byte(Elements * plc_h.FLOATLEN)
+			NumElements = len(FData.FloatData) 
+			FData.Size = byte(NumElements * plc_h.FLOATLEN)
 			for I := 0; I < Elements; I ++ {
 		      Junk := PLCUtils.Float32ToBytes(FData.FloatData[I])
 			  TmpData = append(TmpData,Junk[:]...)
 		      }
 	    } else if (FData.FileType != plc_h.STATUS_TYPE) && (FData.FileType != plc_h.STRING_TYPE)	{
-			Elements = len(FData.WordData) / plc_h.WORDLEN
-		    FData.Size = byte(Elements * plc_h.WORDLEN)
+			NumElements = len(FData.WordData) / plc_h.WORDLEN
+		    FData.Size = byte(NumElements * plc_h.WORDLEN)
 			for I := 0; I < Elements; I ++ {
 		      Junk := PLCUtils.Int16ToBytes(FData.WordData[I * plc_h.WORDLEN])
 		      TmpData = append(TmpData,Junk[:]...)
@@ -834,9 +947,12 @@ func TypedFilePut (PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, RW stri
 	FData.Data = append(FData.Data,Junk[:]...)
 	FData.Data = append(FData.Data,FData.FileType)
 	FData.Data = append(FData.Data,TmpData[:]...)
-	
-	PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(FData.Size+11)               // 11 = Number of bytes in Typed file read/write sans data
-	PLCPtr.PCIP.Data.ItemData = FData.Data 	
+	if RW == "READ" {
+	  PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(MINBYTES)  
+	} else {
+	  PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(FData.Size+MINBYTES)               // 11 = Number of bytes in Typed file read/write sans data
+	}
+	PLCPtr.PCIP.Data.ItemData = FData.Data 
     _,_,_ = PutData(PLCPtr,FData, RW)
 }
 
@@ -851,17 +967,16 @@ func TypedFilePut (PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, RW stri
 //************************************************************************************************************************
 func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element string, Elements int, RW string) {
 	var NumElements int
-	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
-	FileStrToFileData(Element, FData)
+	StrToFileData(Element, FData)
 	if RW == "READ" {                                  // Number of elements requested determines size
 	   FData.PutCmd   = plc_h.LOGICAL_READ_CMD 
 	   FData.Function = plc_h.LOGICAL_READ_FNC
 	   if FData.FileType == plc_h.FLOAT_TYPE {
-		   FData.Size = byte(NumElements * plc_h.FLOATLEN)
+		   FData.Size = byte(Elements * plc_h.FLOATLEN)
 	   } else if (FData.FileType != plc_h.STATUS_TYPE) && (FData.FileType != plc_h.STRING_TYPE)	{
 		   FData.Size = byte(Elements * plc_h.WORDLEN)
 	   } else {
-	     FData.Size = byte(NumElements)
+	     FData.Size = byte(Elements)
 	   } 
 	} else {                                           //Given data determines size 
 	   FData.PutCmd   = plc_h.LOGICAL_WRITE_CMD
@@ -880,7 +995,8 @@ func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element st
 
 	FData.Status     = 0  
 	FData.TNS        = GetTNS() 
-   // FData.FileNo     = FNum                  //Filled in by FileStrToFileData(Element, &FData)
+  //	StrToFileData(Element, FData)
+  // FData.FileNo     = FNum                  //Filled in by FileStrToFileData(Element, &FData)
 	//FData.FileType   = FType
 	//FData.Element    = ElemNum
 	//FData.SubElement = SubNum
@@ -898,6 +1014,7 @@ func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element st
 	FData.Data = append(FData.Data,FData.FileType)
 	FData.Data = append(FData.Data,FData.Element)
 	FData.Data = append(FData.Data,FData.SubElement)
+
 	if RW == "READ" {
 		FData.ByteData  = make([]byte,0)
 	    FData.WordData   = make([]uint16, 0)
@@ -933,10 +1050,8 @@ func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element st
 	Fill_CS_DataHdr(PLCPtr, FData.PutCmd ,FData.Function)
 	PLCPtr.PCIP.Data.ItemData = FData.Data
 	PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(len(FData.Data))
+
 	_,_,_ = PutData(PLCPtr,FData, RW)
-}
-func Test(s string) {
-	fmt.Println(s)
 }
 
 //******************************************************************
@@ -947,15 +1062,13 @@ func Test(s string) {
 func CIFPut(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, Elements byte, Addr uint16, RW string) {
 	var NumElements int
 	var Size byte
-fmt.Printf("Stuff % v ",RW)
-	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
 
+	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
 	Size = Elements * plc_h.WORDLEN
 	if RW == "READ" {
 	   FData.Size   = Elements * plc_h.WORDLEN
 	   FData.PutCmd = plc_h.CIF_READ_CMD
-	   FData.Length = plc_h.MINCIFREAD + Size
-	fmt.Printf("Stuff % x ",FData.Size)
+	   FData.Length = plc_h.MINCIFREAD// + Size
 	} else {
 		NumElements = len(FData.WordData)
 		FData.Size  = byte(NumElements * plc_h.WORDLEN)
@@ -963,35 +1076,34 @@ fmt.Printf("Stuff % v ",RW)
 	    FData.Length = plc_h.MINCIFWRITE + Size
 	}	// READ
 	
+	FData.FileType = plc_h.INTEGER_TYPE
     FData.Status = 0
 	FData.TNS    = GetTNS()
 	FData.Addr   = Addr 
-	
 	FData.ByteData  = make([]byte,0)
 	FData.FloatData = make([]float32, 0)
-	FData.Data      = make([]byte,FData.Length) 
-	
-    FData.Data      = append(FData.Data,FData.PutCmd)
-	FData.Data      = append(FData.Data,FData.Status)
+	FData.Data      = make([]byte,6)                       //Minimum length of data for CIF read/write Cmd, Sts, TNS(2), ADDR(2)
+	FData.Data[0]   = FData.PutCmd
+	FData.Data[1]   = FData.Status
 	Junk           := PLCUtils.Int16ToBytes(FData.TNS)
-	FData.Data      = append(FData.Data,Junk[:]...) 
-	Junk            = PLCUtils.Int16ToBytes(Addr)
-	FData.Data      = append(FData.Data,Junk[:]...) 
+	FData.Data[2] = Junk[0]
+	FData.Data[3] = Junk[1]
+	Junk           = PLCUtils.Int16ToBytes(Addr)
+	FData.Data[4] = Junk[0]
+	FData.Data[5] = Junk[1]
 	if RW == "READ" {
-	   FData.Data   = append(FData.Data,FData.Size) 	
+	   FData.Data   = append(FData.Data,FData.Size) 
 	} else {
-		for I:=0; I < int(FData.Size); I++ {
+		for I:=0; I < int(Elements); I++ {
 		       Junk = PLCUtils.Int16ToBytes(FData.WordData[I])
 		       FData.Data = append(FData.Data,Junk[:]...)
 		       }
 	} 
-	
-
 	PLCPtr.PLC_EtherHdr.EIP_status = 0
 	Fill_CS_Address(PLCPtr, plc_h.RRADDTYPE, plc_h.GEN_FILE_CMD)
 	Fill_CS_DataHdr(PLCPtr, FData.PutCmd ,FData.Function)
-	PLCPtr.PCIP.Data.ItemData = FData.Data
 	PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(len(FData.Data))
+	PLCPtr.PCIP.Data.ItemData = FData.Data
 	_,_,_ = PutData(PLCPtr,FData, RW)
 }
 
@@ -1033,7 +1145,7 @@ func GetData(FData plc_h.PFileData) {
 } // function
 
 //*************************************************
-// Write the Logical command - receive the answer * 
+// Write the  command - receive the answer        * 
 //*************************************************
 func PutData(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, RW string) (string, string, error) {
 	var aConn *net.TCPConn
@@ -1050,9 +1162,10 @@ func PutData(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, RW string) (
 	   request = make([]byte, plc_h.ENCAPSHDRLEN + plc_h.CSDLEN + FData.Size + 4)              //Allow space for reply data  
 	}
     enCapSize :=plc_h.ENCAPSHDRLEN + plc_h.CSDLEN + int(PLCPtr.PCIP.Data.DataHdr.DataLen)
+
 	dataBuff.Data, _ = IPInfoToByteArray(PLCPtr, enCapSize) //plcutils.IPInfoToByteArray(PLCPtr)
 	dataBuff.Overall_len = plc_h.ETHIP_Header_Length + 4
-	
+
 	_, err := aConn.Write([]byte(dataBuff.Data))
 	if err != nil {
 		return "NOTOK", "", err
@@ -1063,7 +1176,7 @@ func PutData(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, RW string) (
 		PLCPtr.Error = plc_h.READERROR
 		return "Read Error: " + PLCPtr.PLCHostIP, "", Rerr
 	}
-	_ = ByteArrayToReply(&PLCReply, request) 
+	_ = ByteArrayToReply(&PLCReply, request)
 	FData.Data = PLCReply.Answer[4:]
 	GetData(FData)	
 	//s = ParseStatus(&PLCReply)
