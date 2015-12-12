@@ -329,13 +329,9 @@ func ByteArrayToReply(PLCReply plc_h.PPCCCReply, ByteBuf []byte) bool {
 	var IDX int
 	var DataLen, AddLen uint16
 	var Command uint16
+	var status uint32
 	//var CSDLen uint16
-	var Session uint32
-	var Status uint32
-	var Context uint64
 
-	Byte4 := make([]byte, 4)
-	Byte8 := make([]byte, 8)
 	//Get lengths of address data and data data buffers
 	AddLen = PLCUtils.ByteToUint16(ByteBuf[34:36])
 	DataLen = PLCUtils.ByteToUint16(ByteBuf[38+AddLen : 38+AddLen+2])
@@ -346,24 +342,18 @@ func ByteArrayToReply(PLCReply plc_h.PPCCCReply, ByteBuf []byte) bool {
 	  return false	
 	}
 				
-	Byte4   = ByteBuf[4:8]
-	Session = PLCUtils.ByteSliceToUint32(Byte4)
-	Byte4   = ByteBuf[8:12]
-	Status  = PLCUtils.ByteSliceToUint32(Byte4)
-	Byte8   = ByteBuf[12:20]
-	Context = PLCUtils.ByteSliceToUint64(Byte8)
-
 	IDX = plc_h.ENCAPSHDRLEN  + plc_h.CSDLEN
 	DataBuf := ByteBuf[IDX:IDX + int(DataLen)]
 
 	PLCReply.Cmd     = Command
 	PLCReply.Length  = DataLen
-	PLCReply.Status  = Status
-	PLCReply.Context = Context
+	copy(PLCReply.Session_handle[:], ByteBuf[4:8])  
+	copy(PLCReply.Status[:],ByteBuf[8:12])        
+	copy(PLCReply.Context[:],ByteBuf[12:20])
 	PLCReply.Answer  = DataBuf
 	PLCReply.Error   = 0
-	PLCReply.Session_handle = Session
-	if Status != 0 {
+	status = PLCUtils.ByteArrayToUint32(PLCReply.Status)
+	if status != 0 {
 		return false
 	} else {
 		return true
@@ -376,8 +366,9 @@ func ParseStatus(PCCC plc_h.PPCCCReply) (string) {
 	var Series = ""
 	var Revision = ""
 	var Name = ""
-
-	if (PCCC.Error != 0) || (PCCC.Status != 0) {
+    var status uint32
+	status = PLCUtils.ByteArrayToUint32(PCCC.Status)
+	if (PCCC.Error != 0) || (status != 0) {
 		return " Status request failed."
 	}
 	SerRev = PCCC.Answer[8]
@@ -398,7 +389,7 @@ func Get_Status(PLCPtr plc_h.PPLC_EtherIP_info) (string, string) {
 	
 	request := make([]byte, 58+plc_h.ENCAPSHDRLEN)
 	aConn = PLCPtr.Connection
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	Fill_CS_Address(PLCPtr, plc_h.STATTYPE, plc_h.DIAG_STATUS_CMD)
 	Fill_CS_DataHdr(PLCPtr, plc_h.DIAG_STATUS_CMD, plc_h.DIAG_STATUS_FNC)
 	dataBuff.Data, _ = IPInfoToByteArray(PLCPtr, 34+plc_h.ENCAPSHDRLEN) //plcutils.IPInfoToByteArray(PLCPtr)
@@ -484,6 +475,41 @@ func IPInfoToByteArray(PLCPtr plc_h.PPLC_EtherIP_info, byteLen int) ([]byte, int
 }
 
 //*************************************************
+// Replyt to Register_Session from PLC            *
+//*************************************************
+func ReplyRegSession(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCPConn error
+	var dataBuff plc_h.Data_buffer //success = 0, recvBuff
+	var aConn *net.TCPConn
+//	var Cont [8]byte
+	//session := make([]byte, 4)
+	//var res int
+	aConn = PLCPtr.Connection
+
+	//  if aConn = nil {
+	//	return result
+	//  }
+
+	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.Register_Session
+	PLCPtr.PLC_EtherHdr.CIP_Len = 4
+	PLCPtr.PLC_EtherHdr.Session_handle = PLCUtils.RandSession()
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
+	//Cont = PLCUtils.Uint64ToByteSlice(PLCUtils.RandContext())
+	PLCPtr.PLC_EtherHdr.Context = PLCUtils.RandContext()
+	PLCPtr.PLC_EtherHdr.Options = plc_h.Blank32
+	//fill_header(comm, head, debug);
+	dataBuff.Data, _ = IPInfoToByteArray(PLCPtr, plc_h.REGLEN) //plcutils.IPInfoToByteArray(PLCPtr)
+	dataBuff.Data[24] = plc_h.PROTOVERSION
+	dataBuff.Data[plc_h.ETHIP_Header_Length] = 1 //* Protocol Version Number */
+	dataBuff.Overall_len = plc_h.ETHIP_Header_Length + 4
+	_, err := aConn.Write([]byte(dataBuff.Data))
+	if err != nil {
+		return "NOTOK"
+	} else {
+		return "OK"
+	}
+}	
+	
+//*************************************************
 // Get a session handle from the PLC
 //*************************************************
 func Register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCPConn error
@@ -491,7 +517,7 @@ func Register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCP
 	var aConn *net.TCPConn
 	var result string
 	request := make([]byte, 28)
-	session := make([]byte, 4)
+	var session  [4]byte
 	//var res int
 	result = "NOTOK"
 	aConn = PLCPtr.Connection
@@ -501,15 +527,17 @@ func Register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCP
 	//  }
 	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.Register_Session
 	PLCPtr.PLC_EtherHdr.CIP_Len = 4
-	PLCPtr.PLC_EtherHdr.Session_handle = 0
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.Session_handle = plc_h.Blank32
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	PLCPtr.PLC_EtherHdr.Context = PLCUtils.RandContext() //RandContext() //plcutils.RandContext
-	PLCPtr.PLC_EtherHdr.Options = 0
+	PLCPtr.PLC_EtherHdr.Options = plc_h.Blank32
 	//fill_header(comm, head, debug);
 	dataBuff.Data, _ = IPInfoToByteArray(PLCPtr, plc_h.REGLEN) //plcutils.IPInfoToByteArray(PLCPtr)
 	dataBuff.Data[24] = plc_h.PROTOVERSION
 	dataBuff.Data[plc_h.ETHIP_Header_Length] = 1 //* Protocol Version Number */
 	dataBuff.Overall_len = plc_h.ETHIP_Header_Length + 4
+	fmt.Println()
+	fmt.Printf("Data % x ",dataBuff.Data)
 	_, err := aConn.Write([]byte(dataBuff.Data))
 	if err != nil {
 		return result
@@ -525,7 +553,7 @@ func Register_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.TCP
 		return "Read Error: " + PLCPtr.PLCHostIP
 	}
 	copy(session[:], request[4:8])
-	PLCPtr.PLC_EtherHdr.Session_handle = PLCUtils.ByteSliceToUint32(session)
+	PLCPtr.PLC_EtherHdr.Session_handle = session
 	return "OK"
 }
 
@@ -543,9 +571,9 @@ func UnRegister_session(PLCPtr plc_h.PPLC_EtherIP_info) string { //, aConn net.T
 	//  }
 	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.UnRegister_Session
 	PLCPtr.PLC_EtherHdr.CIP_Len = 4
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	PLCPtr.PLC_EtherHdr.Context = PLCUtils.RandContext() //RandContext() //plcutils.RandContext
-	PLCPtr.PLC_EtherHdr.Options = 0
+	PLCPtr.PLC_EtherHdr.Options = plc_h.Blank32
 	//fill_header(comm, head, debug);
 	dataBuff.Data, _ = IPInfoToByteArray(PLCPtr, plc_h.REGLEN) //plcutils.IPInfoToByteArray(PLCPtr)
 	dataBuff.Data[24] = plc_h.PROTOVERSION
@@ -579,8 +607,11 @@ func Fill_CS_Address(PLCPtr plc_h.PPLC_EtherIP_info, CSAddress_Type uint16, Cmd 
 	var IPlen uint16
 	var IPAddByte []byte
     var AddData = []byte{1} 
+	PLCPtr.PCIP.CIPHdr.CipTimeOut = 1024 //Added check it out
+	PLCPtr.PCIP.CIPHdr.ItemCnt  = 2
     PLCPtr.PCIP.Address.AddressHdr.CSItemType_ID = CSAddress_Type
-	PLCPtr.PCIP.Address.AddressHdr.DataLen = 1
+    PLCPtr.PCIP.Address.AddressHdr.DataLen = 1
+	
 	PLCPtr.PCIP.Address.ItemData = AddData
 	if Cmd == plc_h.DIAG_STATUS_CMD {
 		IPAddByte = []byte(PLCPtr.PLCHostIP) //PLC IP Address
@@ -598,6 +629,10 @@ func Fill_CS_Address(PLCPtr plc_h.PPLC_EtherIP_info, CSAddress_Type uint16, Cmd 
 
 		PLCPtr.PLC_EtherHdr.CIP_Len = MINLEN + IPlen
 		PLCPtr.PCIP.Address.AddressHdr.DataLen = IPlen //Length of PLC IP Address
+	} else if CSAddress_Type == plc_h.NULLADDRESS {
+		PLCPtr.PLC_EtherHdr.CIP_Len = MINLEN 
+		PLCPtr.PCIP.Address.ItemData = make([]byte,0)
+		PLCPtr.PCIP.Address.AddressHdr.DataLen = 0 //Length of PLC IP Address
 	} else {
 		PLCPtr.PLC_EtherHdr.CIP_Len = MINLEN + 1
 		PLCPtr.PCIP.Address.AddressHdr.DataLen = 1 //Length of PLC IP Address
@@ -636,6 +671,9 @@ func Fill_CS_DataHdr(PLCPtr plc_h.PPLC_EtherIP_info,  Cmd_type, Fnc byte) {
 	data = append(data,Fnc)
 	PLCPtr.PLC_EtherHdr.CIP_Len += 9    //CIP bytes up to & including data length
 	PLCPtr.PCIP.Data.ItemData = data
+	fmt.Printf ("DATA % x ",PLCPtr.PCIP.Data.DataHdr)
+	fmt.Println()
+	fmt.Printf ("DATA % x ",PLCPtr.PCIP.Data.ItemData)
 	return
 }
 
@@ -1045,7 +1083,7 @@ func LogicalPut(PLCPtr plc_h.PPLC_EtherIP_info,FData plc_h.PFileData, Element st
     }
    // FData.Size = byte(len(Sbyte))
     FData.Length      = plc_h.MINLOGICAL + FData.Size
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	Fill_CS_Address(PLCPtr, plc_h.RRADDTYPE, plc_h.GEN_FILE_CMD)
 	Fill_CS_DataHdr(PLCPtr, FData.PutCmd ,FData.Function)
 	PLCPtr.PCIP.Data.ItemData = FData.Data
@@ -1099,7 +1137,7 @@ func CIFPut(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, Elements byte
 		       FData.Data = append(FData.Data,Junk[:]...)
 		       }
 	} 
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	Fill_CS_Address(PLCPtr, plc_h.RRADDTYPE, plc_h.GEN_FILE_CMD)
 	Fill_CS_DataHdr(PLCPtr, FData.PutCmd ,FData.Function)
 	PLCPtr.PCIP.Data.DataHdr.DataLen = uint16(len(FData.Data))
@@ -1184,74 +1222,6 @@ func PutData(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, RW string) (
 	return "OK", s, nil
 }
 
-func DecodeInteger(FData plc_h.PFileData, buf []byte) {
- tmp := buf[5:]	
- LN := len(buf)
- if LN % 2 != 0 {
-	FData.EXStatus = buf[LN]
-	tmp = tmp[0:LN]
-	LN--
-    }
- for I := 0; I < LN	/2; I++ {
-	FData.WordData[I] = PLCUtils.BytesToInt16(buf[I*2:I*2+2])
-    }
-}
-
-func DecodeFloat(FData plc_h.PFileData, buf []byte) {
- tmp := buf[5:]	
- LN := len(buf)
- if LN % 2 != 0 {
-	FData.EXStatus = buf[LN]
-	tmp = tmp[0:LN]
-	LN--
-    }
- for I := 0; I < LN	/4; I++ {
-	FData.FloatData[I] = PLCUtils.BytesToFloat32(buf[I*4:I*2+4])
-    }
-}
-	
-func DecodeData(FData plc_h.PFileData,ByteBuf []byte) {
-	var  FType byte;
-	var PLCReply plc_h.PCCCReply
-	//var  LN uint16
-	var Tmp []byte
-	//LN = uint16(len(ByteBuf))
-	_ =  ByteArrayToReply(&PLCReply, ByteBuf)
-
-	Tmp = PLCReply.Answer
-	FData.GetCmd = ByteBuf[0]
-	FData.Status = ByteBuf[1] 
-	FData.TNS    = PLCUtils.BytesToInt16(ByteBuf[2:3])
-	FType = ByteBuf[4]  
-	     
-	switch FType {
-	  case plc_h.STATUS_TYPE: 
-	       FData.String = ParseStatus(&PLCReply)
-	  case plc_h.BIT_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.TIMER_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.COUNTER_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.CONTROL_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.INTEGER_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.FLOAT_TYPE:
-	       DecodeFloat(FData, Tmp)
-	  case plc_h.OUTPUT_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.INPUT_TYPE:
-	       DecodeInteger(FData, Tmp)
-	  case plc_h.STRING_TYPE:
-	       return
-	  case plc_h.ASCII_TYPE:
-	       return
-	  case plc_h.BCD_TYPE:
-	       return
-      	   }
-}
-
 func OpenFile(PLCPtr plc_h.PPLC_EtherIP_info, FileNo uint16, FileType byte) uint16 { //Tag
     var dataBuff plc_h.Data_buffer //success = 0, recvBuff
 	var aConn *net.TCPConn
@@ -1260,7 +1230,7 @@ func OpenFile(PLCPtr plc_h.PPLC_EtherIP_info, FileNo uint16, FileType byte) uint
 	
 	request := make([]byte, 6 + plc_h.CSDLEN + plc_h.ENCAPSHDRLEN) // 6 bytes Cmd, Sts, TNS(2 bytes), Tag(2 bytes)
 	aConn = PLCPtr.Connection
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	PLCPtr.PCIP.Data.DataHdr.DataLen = 9   //Data length
 	Fill_CS_Address(PLCPtr, plc_h.RRADDTYPE , plc_h.OPEN_FILE_CMD)
 	Fill_CS_DataHdr(PLCPtr, plc_h.OPEN_FILE_CMD, plc_h.OPEN_FILE_FNC)                   // Includes Cmd, Status, TNS
@@ -1300,7 +1270,7 @@ func CloseFile(PLCPtr plc_h.PPLC_EtherIP_info,Tag uint16) uint16 { //Tag
 	
 	request := make([]byte, 4 + plc_h.CSDLEN + plc_h.ENCAPSHDRLEN) // 4 bytes Cmd, Sts, Tag(2)
 	aConn = PLCPtr.Connection
-	PLCPtr.PLC_EtherHdr.EIP_status = 0
+	PLCPtr.PLC_EtherHdr.EIP_status = plc_h.Blank32
 	PLCPtr.PCIP.Data.DataHdr.DataLen = 7                           // Data length
 	Fill_CS_Address(PLCPtr, plc_h.RRADDTYPE , plc_h.CLOSE_FILE_CMD)
 	Fill_CS_DataHdr(PLCPtr, plc_h.CLOSE_FILE_CMD, plc_h.CLOSE_FILE_FNC)                   // Includes Cmd, Status, TNS
@@ -1325,5 +1295,232 @@ func CloseFile(PLCPtr plc_h.PPLC_EtherIP_info,Tag uint16) uint16 { //Tag
 		return 0// "Read Error: " + PLCPtr.PLCHostIP, ""
 	}
 	return PLCUtils.BytesToInt16(request[2:])
+ }
 
+func ForwardOpenReply(PLCPtr plc_h.PPLC_EtherIP_info,buf [128]byte) (err error) {
+    AddLn  := PLCUtils.ByteToUint16(buf[34:36])
+    Fill_CS_Address(PLCPtr, plc_h.NULLADDRESS, plc_h.GEN_FILE_CMD) 
+	PLCPtr.PCIP.Data.DataHdr.CSItemType_ID = plc_h.UNCONNECTEDDATA
+	PLCPtr.PCIP.Data.DataHdr.DataLen = 30                       //UNCONNECTEDDATA word + Length word
+	OpenFwdBuf := make([]byte,0)
+	
+	// Encapsulation header
+	OpenFwdBuf = append(OpenFwdBuf,buf[0:2]...)                 //Command
+    L := PLCUtils.Int16ToBytes(46)
+	OpenFwdBuf = append(OpenFwdBuf,L...)
+	OpenFwdBuf = append(OpenFwdBuf,buf[4:8]...)                 //Session Handle 
+	OpenFwdBuf = append(OpenFwdBuf,buf[8:12]...)                //Status
+	OpenFwdBuf = append(OpenFwdBuf,buf[12:20]...)               //Context
+	OpenFwdBuf = append(OpenFwdBuf,buf[20:24]...)               //Options
+	              
+	//Command Specific data
+	OpenFwdBuf = append(OpenFwdBuf,plc_h.Blank32[:]...)          // CIP Interface Handle = 00 00 00 00
+	L = PLCUtils.Int16ToBytes(PLCPtr.PCIP.CIPHdr.CipTimeOut)     // PLC Timeout   
+	OpenFwdBuf = append(OpenFwdBuf,L...)                         // echo same Timeout  
+	L = PLCUtils.Int16ToBytes(PLCPtr.PCIP.CIPHdr.ItemCnt)        // Item count   
+	OpenFwdBuf = append(OpenFwdBuf,L...)                         // Item count - still 2
+	L = PLCUtils.Int16ToBytes(plc_h.NULLADDRESS)         
+	OpenFwdBuf = append(OpenFwdBuf,L...)                         // Null address = 00 00
+	OpenFwdBuf = append(OpenFwdBuf,plc_h.Blank16[:]...)          // Length of Address data is zero - data is nil
+	L = PLCUtils.Int16ToBytes(plc_h.UNCONNECTEDDATA)  
+	OpenFwdBuf = append(OpenFwdBuf,L...)                         // Unconnected data = 0xB2 00
+	L = PLCUtils.Int16ToBytes(30)
+	OpenFwdBuf = append(OpenFwdBuf,L...)                         // 30 bytes coming in CIP section
+		
+	//CIP Message
+	OpenFwdBuf = append(OpenFwdBuf,plc_h.FORWARD_OPEN_RES)  
+	OpenFwdBuf = append(OpenFwdBuf,0x00)
+	OpenFwdBuf = append(OpenFwdBuf,0x00)
+	OpenFwdBuf = append(OpenFwdBuf,0x00)
+	
+	O_T := PLCUtils.RandSession()
+	OpenFwdBuf = append(OpenFwdBuf, O_T[:]...)                       // O -> T connection ID
+	copy(PLCPtr.CPConnectID[:],O_T[:])                               // Store computer connection ID
+	OpenFwdBuf = append(OpenFwdBuf, buf[52+AddLn:56+AddLn]...)       // T -> O connection ID
+	copy(PLCPtr.PLCConnectID[:],buf[52+AddLn:56+AddLn])              // Store PLC connection ID
+	OpenFwdBuf = append(OpenFwdBuf, buf[56+AddLn:58+AddLn]...)       // Connection S/N
+	PLCPtr.ConnectSN = PLCUtils.ByteToUint16(buf[56+AddLn:58+AddLn]) // Store Connection S/N
+	OpenFwdBuf = append(OpenFwdBuf, buf[58+AddLn:60+AddLn]...)       // Vendor ID
+	OpenFwdBuf = append(OpenFwdBuf, buf[60+AddLn:64+AddLn]...)       // Originator S/N
+	OpenFwdBuf = append(OpenFwdBuf, buf[68+AddLn:72+AddLn]...)       // RPI
+	OpenFwdBuf = append(OpenFwdBuf, buf[68+AddLn:72+AddLn]...)       // RPI 2
+	OpenFwdBuf = append(OpenFwdBuf, 0x00)
+	OpenFwdBuf = append(OpenFwdBuf, 0x00)
+	PLCPtr.PCIP.Data.ItemData = OpenFwdBuf
+	_, err = PLCPtr.Connection.Write(OpenFwdBuf)
+	return err
+
+}
+
+func ServiceReply(PLCPtr plc_h.PPLC_EtherIP_info) (err error) {
+	ReplyBuf := make([]byte,0)
+	// Encapsulation header
+	jnk := PLCUtils.Int16ToBytes(PLCPtr.PLC_EtherHdr.EIP_Command)
+	ReplyBuf = append(ReplyBuf,jnk[:]...) 
+	jnk = PLCUtils.Int16ToBytes(PLCPtr.PLC_EtherHdr.CIP_Len)
+	ReplyBuf = append(ReplyBuf,jnk[:]...) 
+	ReplyBuf = append(ReplyBuf,PLCPtr.PLC_EtherHdr.Session_handle[:]...) 
+	ReplyBuf = append(ReplyBuf,PLCPtr.PLC_EtherHdr.EIP_status[:]...) 
+	ReplyBuf = append(ReplyBuf,PLCPtr.PLC_EtherHdr.Context[:]...) 
+	ReplyBuf = append(ReplyBuf,PLCPtr.PLC_EtherHdr.Options[:]...) 
+	// Command Specific Data
+	ReplyBuf = append(ReplyBuf,plc_h.Blank32[:]...)                           // Interface Handle CIP
+	ReplyBuf = append(ReplyBuf,plc_h.Blank16[:]...)                           // Timeout = 0 - Don't know why
+	ReplyBuf = append(ReplyBuf,PLCUtils.Int16ToBytes(0x02)[:]...)             // Item count = 2   
+	jnk = PLCUtils.Int16ToBytes(plc_h.SENDRRADDRESS)                           
+	ReplyBuf = append(ReplyBuf,jnk[:]...)                                     // Connected Address Item
+	ReplyBuf = append(ReplyBuf,PLCUtils.Int16ToBytes(4)[:]...)                // Address data length
+	ReplyBuf = append(ReplyBuf,PLCPtr.PLCConnectID[:]...) 
+	jnk = PLCUtils.Int16ToBytes(plc_h.SENDRRDATA)                             // Connect ID of PLC - length 4
+	ReplyBuf = append(ReplyBuf,jnk[:]...)                                     // Connected Data Item
+	ReplyBuf = append(ReplyBuf,PLCUtils.Int16ToBytes(6)[:]...)                // Reply contains 6 bytes
+	jnk = PLCUtils.Int16ToBytes(PLCPtr.SeqCount+1)
+	ReplyBuf = append(ReplyBuf,jnk[:]...)                                     // Incremented Sequence count
+	ReplyBuf = append(ReplyBuf,plc_h.CIPReply[:]...)
+	_, err = PLCPtr.Connection.Write(ReplyBuf)
+
+	return err
+}
+
+func ParseUnitData(PLCPtr plc_h.PPLC_EtherIP_info,Service plc_h.PPLCService, buf [128]byte) {
+	var ConID [4]byte
+    var AddLen, DataLen uint16
+		
+	AddLen = PLCUtils.BytesToInt16(buf[34:36])
+	copy(ConID[:],buf[36:40])
+	DataLen = PLCUtils.BytesToInt16(buf[38+AddLen:40+AddLen])
+	Service.Seq_Count = PLCUtils.BytesToInt16(buf[40+AddLen:42+AddLen])
+	PLCPtr.SeqCount  = Service.Seq_Count
+	Service.Service = buf[42+AddLen]
+	Service.Path_Size = buf[43+AddLen]
+	copy(Service.Req_Path[:],buf[44+AddLen:48+AddLen])
+	
+	if PLCUtils.ByteArray4Equals(ConID, PLCPtr.CPConnectID) == false {   //PLC should use my connection ID
+		fmt.Println(" Connection ID does not match")
+		}
+	// CIP data
+	DataBuf := make([]byte,DataLen)	
+	copy(DataBuf[:],buf[48+AddLen:])
+	Service.Cmd_Spc_Data.GetCmd     = DataBuf[7]
+	Service.Cmd_Spc_Data.Status     = DataBuf[8]
+	Service.Cmd_Spc_Data.TNS        = PLCUtils.BytesToInt16(DataBuf[9:11])
+	Service.Cmd_Spc_Data.Function   = DataBuf[11]
+	Service.Cmd_Spc_Data.Size       = DataBuf[12]
+	Service.Cmd_Spc_Data.FileNo     = DataBuf[13]
+	Service.Cmd_Spc_Data.FileType   = DataBuf[14]
+	Service.Cmd_Spc_Data.Element    = DataBuf[15]
+	Service.Cmd_Spc_Data.SubElement = DataBuf[16]
+	Service.Cmd_Spc_Data.Data       = make([]byte,Service.Cmd_Spc_Data.Size)
+	copy(Service.Cmd_Spc_Data.Data,DataBuf[17:])
+	DecodeData(Service , Service.Cmd_Spc_Data.Data) 
+    //Command Specific Data - set up for reply
+	PLCPtr.PLC_EtherHdr.CIP_Len = 26
+	copy(PLCPtr.PCIP.CIPHdr.CIPHandle[:],buf[24:28])                     // CSD Interface handle = CIP
+	PLCPtr.PCIP.CIPHdr.CipTimeOut = 0                                    // CSD Time out = 0
+	PLCPtr.PCIP.CIPHdr.ItemCnt = 2                                       // CSD Itemcount = 2
+	PLCPtr.PCIP.Address.AddressHdr.CSItemType_ID = plc_h.SENDRRADDRESS   // CSD Connected Address Item
+	PLCPtr.PCIP.Address.AddressHdr.DataLen       = 4                     // CSD Address Data Length
+	PLCPtr.PCIP.Data.DataHdr.CSItemType_ID       = plc_h.SENDRRDATA      // CSD Connected Data Item
+	PLCPtr.PCIP.Data.DataHdr.DataLen = 6                                 // CSD Data Length
+	PLCPtr.PCIP.Data.ItemData = make([]byte,6)
+	Seq := PLCUtils.Int16ToBytes(Service.Seq_Count)
+	copy(PLCPtr.PCIP.Data.ItemData[:], Seq[:])   
+	PLCPtr.PCIP.Data.ItemData = append(PLCPtr.PCIP.Data.ItemData,plc_h.CIPReply[:]...)  // CSD Data
+       _ = ServiceReply(PLCPtr)
+	}
+	
+func DecodeInteger(Service plc_h.PPLCService, buf []byte) {
+ LN := len(buf)
+ Service.Cmd_Spc_Data.WordData = make([]uint16,LN/4)
+ for I := 0; I < LN	/2; I++ {
+	Service.Cmd_Spc_Data.WordData[I] = PLCUtils.BytesToInt16(buf[I*2:I*2+2])
+    }
+}
+
+func DecodeFloat(Service plc_h.PPLCService, buf []byte) {
+ LN := len(buf)
+ Service.Cmd_Spc_Data.FloatData = make([]float32,LN/4)
+ for I := 0; I < LN	/4; I++ {
+	Service.Cmd_Spc_Data.FloatData[I] = PLCUtils.BytesToFloat32(buf[I*4:I*4+4])
+    }
+}
+	
+func DecodeData(Service plc_h.PPLCService, ByteBuf []byte) {
+	var FType byte
+	FType = Service.Cmd_Spc_Data.FileType
+	switch FType {
+	  case plc_h.STATUS_TYPE: 
+	      // Service.Cmd_Spc_Data.String = ByteBuf use strconv
+	  case plc_h.BIT_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.TIMER_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.COUNTER_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.CONTROL_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.INTEGER_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.FLOAT_TYPE:
+	       DecodeFloat(Service, ByteBuf)
+	  case plc_h.OUTPUT_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.INPUT_TYPE:
+	       DecodeInteger(Service, ByteBuf)
+	  case plc_h.STRING_TYPE:
+	       return
+	  case plc_h.ASCII_TYPE:
+	       return
+	  case plc_h.BCD_TYPE:
+	       return
+      	   }
+				
+}
+
+func PrintData(Service plc_h.PPLCService) {
+	var FType byte
+	FType = Service.Cmd_Spc_Data.FileType
+	switch FType {
+	  case plc_h.STATUS_TYPE: 
+	       return
+	  case plc_h.BIT_TYPE:
+	       PrintInteger(Service)
+	  case plc_h.TIMER_TYPE:
+	       PrintInteger(Service)
+	  case plc_h.COUNTER_TYPE:
+	       PrintInteger(Service)
+	  case plc_h.CONTROL_TYPE:
+	       PrintInteger(Service)
+	  case plc_h.INTEGER_TYPE:
+	       PrintInteger(Service)
+	  case plc_h.FLOAT_TYPE:
+	       PrintFloat(Service)
+	  case plc_h.OUTPUT_TYPE:
+	       PrintInteger(Service)
+	  case plc_h.INPUT_TYPE:
+	       PrintInteger(Service,)
+	  case plc_h.STRING_TYPE:
+	       fmt.Printf("String %v \n",Service.Cmd_Spc_Data.String)
+	  case plc_h.ASCII_TYPE:
+	       return
+	  case plc_h.BCD_TYPE:
+	       return
+      	   }
+	
+}
+
+func PrintFloat(Service plc_h.PPLCService) {
+ LN := len(Service.Cmd_Spc_Data.FloatData)
+ for I := 0; I < LN	; I++ {
+	fmt.Printf("Float %v ", Service.Cmd_Spc_Data.FloatData[I])
+    }
+ fmt.Println()		
+}
+
+func PrintInteger(Service plc_h.PPLCService) {
+ LN := len(Service.Cmd_Spc_Data.WordData)
+ for I := 0; I < LN	; I++ {
+	fmt.Printf("Integer %v ", Service.Cmd_Spc_Data.WordData)
+    }
+ fmt.Println()	
 }

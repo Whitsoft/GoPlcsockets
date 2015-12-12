@@ -11,6 +11,7 @@ import (
 	"os"
 	"plc_h"
 	"PLCFunctions"
+	"PLCUtils"
 	"fmt"
 )
 
@@ -20,7 +21,6 @@ const CSDLEN = 12 //IF Handle + T/O + Item cnt + Type ID (Address) + Len (Addres
 var TNSValue uint16
 
 func main() {
-
 	var PLCPtr plc_h.PLC_EtherIP_info
 	var FData plc_h.FileData
 
@@ -32,7 +32,8 @@ func main() {
 	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
 
 	PLCPtr.PCIP.CIPHdr.CipTimeOut = plc_h.TIMEOUT
-	PLCPtr.PCIP.CIPHdr.CIPHandle = 0
+	junk := PLCUtils.Uint32ToByteArray(0)
+	copy(PLCPtr.PCIP.CIPHdr.CIPHandle[:],junk[:])
 	PLCPtr.PCIP.CIPHdr.ItemCnt = 2
 	
     //**********************************************

@@ -31,17 +31,24 @@ func Cat2Splices(S1, S2 []byte) []byte {
 	result = append(S1, S2...)
 	return result
 }
+func RandSession() [4]byte {
+// create int32 random number
+	s1 := rand.NewSource(time.Now().UnixNano())
+	r1 := rand.New(s1)
+	Rand32 := r1.Int31()
+	return Uint32ToByteArray(uint32(Rand32))
+	}
 
-func RandContext() uint64 {
+func RandContext() [8]byte {
 	// create int64 random number
 	s1 := rand.NewSource(time.Now().UnixNano())
 	r1 := rand.New(s1)
 	Rand64 := r1.Int63()
-	return uint64(Rand64)
+	return Uint64ToByteArray(uint64(Rand64))
 }
 
-func Uint64ToByteSlice(Con uint64) []byte { //ByteArray0, ByteArray1,...,ByteArray7 byte) uint64 {
-	b := make([]byte, 8)
+func Uint64ToByteArray(Con uint64) [8]byte { //ByteArray0, ByteArray1,...,ByteArray7 byte) uint64 {
+	var b [8]byte //:= make([]byte, 8)
 	b[0] = byte(Con)
 	b[1] = byte(Con >> 8)
 	b[2] = byte(Con >> 16)
@@ -58,8 +65,8 @@ func ByteSliceToUint64(data []byte) uint64 {
 		uint64(data[4])<<32 | uint64(data[5])<<40 | uint64(data[6])<<48 | uint64(data[7])<<56
 }
 
-func Uint32ToByteSlice(Con uint32) []byte { //ByteArray0, ByteArray1,...,ByteArray7 byte) uint64 {
-	b := make([]byte, 4)
+func Uint32ToByteArray(Con uint32) [4]byte { //ByteArray0, ByteArray1,...,ByteArray7 byte) uint64 {
+	var b [4]byte
 	b[0] = byte(Con)
 	b[1] = byte(Con >> 8)
 	b[2] = byte(Con >> 16)
@@ -67,7 +74,7 @@ func Uint32ToByteSlice(Con uint32) []byte { //ByteArray0, ByteArray1,...,ByteArr
 	return b
 }
 
-func ByteSliceToUint32(data []byte) uint32 {
+func ByteArrayToUint32(data [4]byte) uint32 {
 	return uint32(data[0]) | uint32(data[1])<<8 | uint32(data[2])<<16 | uint32(data[3])<<24
 }
 
@@ -243,4 +250,22 @@ func PutWords(buf []byte) []uint16 { //
 		result = append(result, I16)
 	}
 	return result
+}
+
+func ByteArray2Equals(a [2]byte, b [2]byte) bool {
+    for i, v := range a {
+        if v != b[i] {
+            return false
+        }
+    }
+    return true
+}
+
+func ByteArray4Equals(a [4]byte, b [4]byte) bool {
+    for i, v := range a {
+        if v != b[i] {
+            return false
+        }
+    }
+    return true
 }
