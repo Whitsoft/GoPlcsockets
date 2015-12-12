@@ -4,10 +4,6 @@ import (
 	"fmt"
 	"net"
 )
-var 	Blank16       = [2]byte{0x00,0x00}
-var 	Blank32       = [4]byte{0x00,0x00,0x00,0x00}
-var 	Blank64       = [8]byte{0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00}
-var     CIPReply      = [4]byte{0xCB,0x00,0x00,0x00} 
 
 const (
 	FALSE         = 1
@@ -39,14 +35,9 @@ const (
 	FLOATLEN      = 4
 
 	CELL_DFLT_TIMEOUT = 5000
-	NULLADDRESS       = 0x00
-	CONNECTEDDATA     = 0xB1
-	UNCONNECTEDDATA   = 0xB2
 	STATTYPE          = 0x85
 	RRADDTYPE         = 0x81
 	RRDATATYPE        = 0x91 //Who knows - undocumented
-	SENDRRADDRESS     = 0xA1
-	SENDRRDATA        = 0xB1
 	PLCCOUNT          = 1
 	SUBPRE            = 1
     SUBACC            = 2
@@ -118,23 +109,6 @@ const (
 	DATA_MINLEN         = 16
 	TIMEOUT             = 0x400
 
-//*****************************************
-// CIP Service Codes                      * 
-//*****************************************
-	FORWARD_OPEN_REQ        = 0x54
-	FORWARD_OPEN_RES        = 0xD4
-	FORWARD_CLOSE           = 0x4E
-	CIP_GENERIC             = 0x4B
-	CIP_GENERIC_REPLY       = 0xCB
-	CIP_READ                = 0x4C
-	CIP_READ_REPLY          = 0xCC
-	CIP_READ_FRAG           = 0x52
-	CIP_READ_FRAG_REPLY     = 0xD2
-	CIP_WRITE               = 0x4D
-	CIP_WRITE_REPLY         = 0xCD
-	CIP_WRITE_FRAG          = 0x53
-	CIP_WRITE_FRAG_REPLY    = 0xD3
-	
     //*****************************************
 	// PCCC file numbers
 	//*****************************************
@@ -148,7 +122,6 @@ const (
 	//*****************************************
 	// PCCC commands
 	//*****************************************
-	NULL_CMD              = 0x00
 	GEN_FILE_CMD          = 0x0F
 	OPEN_FILE_CMD         = 0x0F
 	CLOSE_FILE_CMD        = 0x0F
@@ -165,7 +138,7 @@ const (
 	PLC_CIF_WRT_ANSWER    = 0x48
 	
 	OPEN_FILE_FNC         = 0x81
-	CLOSE_FILE_FNC        = 0x82
+	CLOSE_FILE_FNC        = 0x80
     TYPE_FILE_READ_FNC    = 0xA7
 	TYPE_FILE_WRITE_FNC   = 0xAF
 	LOGICAL_READ_FNC      = 0xA2
@@ -288,7 +261,7 @@ type Data_Item struct {
 }
 
 type CIP_Hdr struct {
-	CIPHandle  [4]byte // cardinal //zero
+	CIPHandle  uint32 // cardinal //zero
 	CipTimeOut uint16
 	ItemCnt    uint16
 }
@@ -314,13 +287,13 @@ type Ethernet_header struct { //284 bytes
 // Start of Ethernet/IP Industrial protocol                 *
 //***********************************************************
 type PEtherIP_Hdr *EtherIP_Hdr
-type EtherIP_Hdr struct {     //24 bytes
-	EIP_Command    uint16     // Such as as 0x006F SendRRData
-	CIP_Len        uint16     // Length of command specific data
-	Session_handle [4]byte
-	EIP_status     [4]byte    //0x00000000 = success
-	Context        [8]byte    //Sender context
-	Options        [4]byte    // total 24 bytes
+type EtherIP_Hdr struct { //24 bytes
+	EIP_Command    uint16 // Such as as 0x006F SendRRData
+	CIP_Len        uint16 // Length of command specific data
+	Session_handle uint32
+	EIP_status     uint32 //0x00000000 = success
+	Context        uint64 //Sender context
+	Options        uint32 // total 24 bytes
 }
 
 //***************************************************
@@ -331,19 +304,15 @@ type EtherIP_Hdr struct {     //24 bytes
 type //Keep this data for individual PLC connections
 PPLC_EtherIP_info *PLC_EtherIP_info
 type PLC_EtherIP_info struct {
-	PLC_EtherHdr  EtherIP_Hdr
-	PCIP          CIP
-	Connection    *net.TCPConn
-	PLCHostIP     string
-	PLCHostPort   uint16
-	Error         int
-	Tag           byte
-	FType         byte
-	Connected     byte //1 = connected
-	SeqCount      uint16
-	ConnectSN     uint16
-	CPConnectID   [4]byte  //  O->T 
-	PLCConnectID  [4]byte  //  T->O
+	PLC_EtherHdr EtherIP_Hdr
+	PCIP         CIP
+	Connection   *net.TCPConn
+	PLCHostIP    string
+	PLCHostPort  uint16
+	Error        int
+	Tag          byte
+	FType        byte
+	Connected    byte //1 = connected
 }
 
 //************************************
@@ -353,9 +322,9 @@ type PPCCCReply *PCCCReply
 type PCCCReply struct {
 	Cmd            uint16
 	Length         uint16
-	Session_handle [4]byte
-	Context        [8]byte
-	Status         [4]byte    //0x00000000 = success
+	Session_handle uint32
+	Context        uint64 //Sender context
+	Status         uint32
 	Error          uint16
 	Answer         []byte 
 }
@@ -408,51 +377,8 @@ type FileData struct {
 	Size       byte         // Read/Write - size in bytes of data
 	String     string
 	Data       []byte       // Raw data element values in byte form - just float, word or byte for now
-	FileDesc   string
 }
 
-type PPLCMessage  *PLCMessage
-type PLCMessage  struct {
-     SHandle    []byte //array[0..3] of byte;
-     CMD        byte
-     ConID      []byte //array[0..3] of byte;
-     funct      byte
-     Size       byte
-     FileNo     byte
-     FileType   byte
-     Element    byte
-     SubElement byte
-     Data       []byte //: array[0..63] of byte;
-     FileDesc   string
-}
-//***********************************************************
-// PLCService plus CSD - will contain the DataItem.ItemData *
-// Coming from
-type PPLCService  *PLCService
-type PLCService  struct {
-	 Seq_Count     uint16
-	 Service       byte        //Start of Common Industrial Protocol
-	 Path_Size     byte
-	 Req_Path      [4]byte
-	 Cmd_Spc_Data  FileData  //CSD
-}
-
-type CSD struct { //Command specific data
-     SHandle    []byte    //array[0..3] of byte;
-	 Unknown    []byte    // 7 bytes - usually 07 01 00 4C 6D 4F 40
-     CMD        byte      // Such as 0F
-	 Status     byte
-	 TNS        uint16
-     Funct      byte
-     Size       byte
-     FileNo     byte
-     FileType   byte
-     Element    byte
-     SubElement byte
-     Data       []byte //: array[0..63] of byte;
-     FileDesc   string
-	
-}
 func main() {
 	fmt.Println("hello")
 }
