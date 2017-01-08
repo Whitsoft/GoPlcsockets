@@ -5,6 +5,10 @@ import (
 	"net"
 )
 
+var Blank16       = [2]byte{0x00,0x00}
+var Blank32       = [4]byte{0x00,0x00,0x00,0x00}
+var CIPReply      = [4]byte{0xC0,0x00,0x00,0x00}
+
 const (
 	FALSE         = 1
 	TRUE          = 0
@@ -34,16 +38,23 @@ const (
 	INTLEN        = 4
 	FLOATLEN      = 4
 
-	CELL_DFLT_TIMEOUT = 5000
+
+CELL_DFLT_TIMEOUT = 5000
 	STATTYPE          = 0x85
 	RRADDTYPE         = 0x81
 	RRDATATYPE        = 0x91 //Who knows - undocumented
+	CONNECTEDADDRESS  = 0xA1
+	CONNECTEDDATA     = 0xB1
+	UNCONNECTEDADDRESS= 0xA2
+	UNCONNECTEDDATA   = 0xB2
 	PLCCOUNT          = 1
 	SUBPRE            = 1
     SUBACC            = 2
 	ADDRTYPESCOUNT     = 26
 	DATA_Buffer_Length = 2024
 	CPH_Null           = 0
+
+
 
 	SLC    = 3
 	MICRO  = 4
@@ -54,6 +65,7 @@ const (
 	_CUSTOM_LEN      = 16
 	PCCC_VERSION     = 4
 	PCCC_BACKLOG     = 5
+	NULLADDRESS      = 0x0000
 
 	// Use one  the these values for the fnc, prot logical. Do not use any other
 	// values doing so may result in unpredictable results.
@@ -92,7 +104,14 @@ const (
 	TCPERROR       = -12
 	READERROR      = -13
 
-
+//constants for CIP service commands
+	List_Attributes     = 0x55
+	Read_Tag            = 0x4C
+	Write_Tag           = 0x4D
+	Reply_Attributes    = 0xD5
+	Reply_ReadTag       = 0xCC
+	Reply_WriteTag      = 0xCD 
+	
 	//constants for Ethernet/IP (encapsulation) header
 	NOP                 = 0
 	List_Targets        = 1
@@ -101,7 +120,8 @@ const (
 	List_Interfaces     = 0x64
 	Register_Session    = 0x65
 	UnRegister_Session  = 0x66
-	SendRRData          = 0x6f
+	SENDRRDATA          = 0x6f
+	SENDRRADDRESS       = 0x6F
 	SendUnitData        = 0x70
 	Indicate_Status     = 0x72
 	Cancel              = 0x73
@@ -136,6 +156,7 @@ const (
 	PLC_ANSWER            = 0x4F
 	PLC_CIF_RD_ANSWER     = 0x41
 	PLC_CIF_WRT_ANSWER    = 0x48
+	FORWARD_OPEN_RES      = 0xD4
 	
 	OPEN_FILE_FNC         = 0x81
 	CLOSE_FILE_FNC        = 0x80
@@ -260,8 +281,15 @@ type Data_Item struct {
 
 }
 
+
+type CSD_Hdr struct {
+	IFHandle   [4]byte // cardinal //zero - for CIP protocol
+	TimeOut    uint16
+	ItemCnt    uint16
+}
+
 type CIP_Hdr struct {
-	CIPHandle  uint32 // cardinal //zero
+	CIPHandle  [4]byte // cardinal //zero - for CIP protocol
 	CipTimeOut uint16
 	ItemCnt    uint16
 }
@@ -290,22 +318,24 @@ type PEtherIP_Hdr *EtherIP_Hdr
 type EtherIP_Hdr struct { //24 bytes
 	EIP_Command    uint16 // Such as as 0x006F SendRRData
 	CIP_Len        uint16 // Length of command specific data
-	Session_handle uint32
-	EIP_status     uint32 //0x00000000 = success
-	Context        uint64 //Sender context
-	Options        uint32 // total 24 bytes
+	Session_handle [4]byte
+	EIP_status     [4]byte //0x00000000 = success
+	Context        [8]byte //Sender context
+	Options        [4]byte // total 24 bytes
 }
 
-//***************************************************
-// Convenient structure for internal use            *
-// Not part of communications structures            *
-//  type IP []byte   from gonet                     *
-//***************************************************
+//*************************************************************************************
+// Convenient structure for internal use                                              *
+// Not part of communications structures                                              *
+//  type IP []byte   from gonet                                                       *
+// Items - usually an address item and a data item (with a type ID, a length and data *                                   *
+//************************************************************************************* 
 type //Keep this data for individual PLC connections
 PPLC_EtherIP_info *PLC_EtherIP_info
 type PLC_EtherIP_info struct {
 	PLC_EtherHdr EtherIP_Hdr
 	PCIP         CIP
+	CSD          CmdSpcData           // Interface handle, TimeOut, ItemCount, Items(  
 	Connection   *net.TCPConn
 	PLCHostIP    string
 	PLCHostPort  uint16
@@ -313,6 +343,11 @@ type PLC_EtherIP_info struct {
 	Tag          byte
 	FType        byte
 	Connected    byte //1 = connected
+	SeqCount     uint16
+	ConnectSN    uint16
+	PLCConnectID [4]byte
+	PCConnectID  [4]byte
+	
 }
 
 //************************************
@@ -322,9 +357,9 @@ type PPCCCReply *PCCCReply
 type PCCCReply struct {
 	Cmd            uint16
 	Length         uint16
-	Session_handle uint32
-	Context        uint64 //Sender context
-	Status         uint32
+	Session_handle []byte
+	Context        []byte //Sender context
+	Status         [4]byte
 	Error          uint16
 	Answer         []byte 
 }
@@ -377,6 +412,83 @@ type FileData struct {
 	Size       byte         // Read/Write - size in bytes of data
 	String     string
 	Data       []byte       // Raw data element values in byte form - just float, word or byte for now
+}
+
+//***********************************************************
+// CIP data structure 
+// O_T is Originator to Target                              *
+// T_O is Target to Originator                              *
+//***********************************************************
+type PCIP_Data *CIP_Data               //40 bytes?
+type CIP_Data struct {
+	TimeOut         uint16
+	O_TConnectID    [4]byte
+	T_OConnectID    [4]byte
+	ConnectSN       [2]byte
+	VendorID        [2]byte
+	OrigSN          [4]byte
+	T_OMult          byte
+	Reserved        [3]byte 
+	O_T_RPI         [4]byte   //milliseconds 
+	O_T_Params      [2]byte
+	T_O_RPI         [4]byte   //milliseconds 
+	T_O_Params      [2]byte
+	TransTrigger    byte      //0xA3
+	ConPathSize     byte      //Number of words
+	ClassSegment    byte
+	MsgRouter       byte
+//	InstanceSegment byte
+	Instance        byte
+	
+	InstanceSegment [2]byte 
+	PathSize     byte //no of words
+	Path         []byte
+	CIPData      []byte
+}
+
+//***********************************************************
+//  CIP data structure  - compact logix                     *
+//***********************************************************
+//type PCIP *CIP
+//type CIP struct {
+//	Service      byte
+//	PathSize     byte //no of words
+//	Path         []byte
+//	CIPData      []byte
+//}
+
+
+//************************************************************
+// Structure for Command Specific Data                       *
+//************************************************************
+type PCmdSpcData *CmdSpcData
+type CmdSpcData struct {
+	GetCmd        byte
+	Size          byte
+	TNS           uint16
+	Function      byte
+	Status        byte
+	FileNo        byte
+	FileType      byte 
+	Element       byte
+	SubElement    byte
+	Data          []byte
+	WordData      []uint16
+	FloatData     []float32
+	String        string
+}
+
+//************************************************************
+// Structure for Service                                     *
+//************************************************************
+type PPLCService *PLCService
+type PLCService struct {
+	Service       byte
+	ReqPathSize   byte
+	ReqPath       [4]byte
+	ReqData       []byte
+	Seq_Count     uint16
+	Cmd_Spc_Data  CmdSpcData
 }
 
 func main() {

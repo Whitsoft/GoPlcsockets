@@ -1101,7 +1101,7 @@ func CIFPut(PLCPtr plc_h.PPLC_EtherIP_info, FData plc_h.PFileData, Elements byte
 	var NumElements int
 	var Size byte
 
-	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
+	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SENDRRDATA
 	Size = Elements * plc_h.WORDLEN
 	if RW == "READ" {
 	   FData.Size   = Elements * plc_h.WORDLEN
@@ -1335,7 +1335,7 @@ func ForwardOpenReply(PLCPtr plc_h.PPLC_EtherIP_info,buf [128]byte) (err error) 
 	
 	O_T := PLCUtils.RandSession()
 	OpenFwdBuf = append(OpenFwdBuf, O_T[:]...)                       // O -> T connection ID
-	copy(PLCPtr.CPConnectID[:],O_T[:])                               // Store computer connection ID
+	copy(PLCPtr.PLCConnectID[:],O_T[:])                               // Store computer connection ID
 	OpenFwdBuf = append(OpenFwdBuf, buf[52+AddLn:56+AddLn]...)       // T -> O connection ID
 	copy(PLCPtr.PLCConnectID[:],buf[52+AddLn:56+AddLn])              // Store PLC connection ID
 	OpenFwdBuf = append(OpenFwdBuf, buf[56+AddLn:58+AddLn]...)       // Connection S/N
@@ -1392,10 +1392,10 @@ func ParseUnitData(PLCPtr plc_h.PPLC_EtherIP_info,Service plc_h.PPLCService, buf
 	Service.Seq_Count = PLCUtils.BytesToInt16(buf[40+AddLen:42+AddLen])
 	PLCPtr.SeqCount  = Service.Seq_Count
 	Service.Service = buf[42+AddLen]
-	Service.Path_Size = buf[43+AddLen]
-	copy(Service.Req_Path[:],buf[44+AddLen:48+AddLen])
+	Service.ReqPathSize = buf[43+AddLen]
+	copy(Service.ReqPath[:],buf[44+AddLen:48+AddLen])
 	
-	if PLCUtils.ByteArray4Equals(ConID, PLCPtr.CPConnectID) == false {   //PLC should use my connection ID
+	if PLCUtils.ByteArray4Equals(ConID, PLCPtr.PLCConnectID) == false {   //PLC should use my connection ID
 		fmt.Println(" Connection ID does not match")
 		}
 	// CIP data

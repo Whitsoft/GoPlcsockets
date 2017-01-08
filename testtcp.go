@@ -29,7 +29,7 @@ func main() {
 	_ = PLCFunctions.Connect(&PLCPtr)
 
 	PLCFunctions.Register_session(&PLCPtr)
-	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SendRRData
+	PLCPtr.PLC_EtherHdr.EIP_Command = plc_h.SENDRRDATA
 
 	PLCPtr.PCIP.CIPHdr.CipTimeOut = plc_h.TIMEOUT
 	junk := PLCUtils.Uint32ToByteArray(0)
